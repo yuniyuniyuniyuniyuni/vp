@@ -1,6 +1,7 @@
 // src/pages/GroupStudyPage.jsx
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
 
 /**
  * '다른 참여자' 수(1~9명)에 따라 최적의 그리드 클래스를 반환하는 함수
@@ -78,72 +79,70 @@ function GroupStudyPage() {
 
     // --- 1. 웹소켓 연결 (AI 모니터링 데이터 수신) ---
     useEffect(() => {
-        // localStorage에서 토큰 가져오기
-        const token = localStorage.getItem('authToken');
+        let ws;
         
-        // 토큰이 없으면 (로그인 안 했으면) 홈으로 리디렉션
-        if (!token) {
-            console.error("No auth token found, redirecting to home.");
-            navigate('/');
-            return; 
-        }
+        const connectWebSocket = async () => {
+            const { data: { session }, error } = await supabase.auth.getSession();
 
-        // 토큰을 포함하여 WebSocket URL 생성
-        const wsStatsUrl = `ws://localhost:8000/ws_stats?token=${token}`;
-        
-        const ws = new WebSocket(wsStatsUrl);
-        
-        ws.onopen = () => console.log("WebSocket connected with token");
-        
-        ws.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.time) setStudyTime(data.time);
-                if (data.status) setCurrentStatus(data.status);
-                if (data.counts) {
-                    setStats(prevStats => ({ // DB 스키마에 맞춰 안전하게 업데이트
-                        ...prevStats,
-                        ...data.counts
-                    }));
-                }
-            } catch (e) {
-                console.error("Failed to parse WebSocket message", e);
-            }
-        };
-        
-        ws.onerror = (error) => {
-            console.error("WebSocket error:", error);
-            setCurrentStatus("Error");
-        };
-        
-        ws.onclose = (event) => {
-            console.log("WebSocket disconnected:", event.reason);
-            // 1008: Policy Violation (백엔드에서 보낸 'Invalid token')
-            if (event.code === 1008) { 
-                setCurrentStatus("Auth Error");
-                navigate('/'); // 토큰 오류 시 홈으로
+            if (session) {
+                // 로그인 상태면 Supabase 토큰 사용
+                const token = session.access_token;
+                const wsStatsUrl = `ws://localhost:8000/ws_stats?token=${token}`;
+                console.log("Connecting WebSocket with Supabase token...");
+                
+                ws = new WebSocket(wsStatsUrl);
+                // ... (ws.onopen, onmessage 등 동일한 로직) ...
+                ws.onopen = () => console.log("WebSocket connected");
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.time) setStudyTime(data.time);
+                        if (data.status) setCurrentStatus(data.status);
+                        if (data.counts) {
+                            setStats(prevStats => ({ ...prevStats, ...data.counts }));
+                        }
+                    } catch (e) { console.error("Failed to parse WebSocket message", e); }
+                };
+                ws.onerror = (error) => { console.error("WebSocket error:", error); };
+                ws.onclose = (event) => {
+                    console.log("WebSocket disconnected:", event.reason);
+                    if (event.code === 1008) { navigate('/'); }
+                    else { setCurrentStatus("Disconnected"); }
+                };
             } else {
-                setCurrentStatus("Disconnected");
+                // [수정] 비로그인 상태면 그룹 스터디 이용 불가. 홈으로 리디렉션.
+                console.log("No session found. Redirecting to home.");
+                navigate('/');
             }
         };
-        
-        // 컴포넌트 언마운트 시 웹소켓 연결 해제
+
+        connectWebSocket();
+
         return () => ws.close();
     }, [navigate]); // navigate를 의존성 배열에 추가
 
     // --- 2. 로그인 상태(localStorage) 확인 ---
     useEffect(() => {
-        const dataString = localStorage.getItem('userData');
-        if (dataString) {
-            setUserData(JSON.parse(dataString));
-        }
-    }, []); // 마운트 시 1회만 실행
+        const fetchUserData = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                setUserData({
+                    name: user.user_metadata.name || user.email,
+                    picture: user.user_metadata.picture,
+                    email: user.email
+                });
+            } else {
+                 navigate('/'); // (선택) 유저 정보 없으면 홈으로
+            }
+        };
+        fetchUserData();
+    }, [navigate]);
 
     // --- 이벤트 핸들러 ---
-    const handleLogout = () => {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('userData');
-        navigate('/');
+    const handleLogout = async () => {
+        await supabase.auth.signOut();
+        setUserData(null); 
+        navigate('/'); 
     };
 
     const handleGoBack = () => {
@@ -239,16 +238,15 @@ function GroupStudyPage() {
                 
                 <div className="webcam-view">
                     {/* 탭 1: 그룹 뷰 */}
-                    {mainViewTab === 'group' && (
-                        <div className={`webcam-grid ${gridClasses}`}>
-                            {otherParticipants.map((member) => (
-                                <WebcamCard 
-                                    key={member.id} 
-                                    name={member.name} 
-                                    status={member.status} 
-                                    isMe={false} 
-                                />
-                            ))}
+                    {mainViewTab === 'my-webcam' && (
+                        <div className="my-webcam-view">
+                            <WebcamCard 
+                                key={myData.id} 
+                                name={myData.name} 
+                                status={myData.status} 
+                                isMe={true} 
+                                videoFeedUrl={videoFeedUrl} 
+                            />
                         </div>
                     )}
 
