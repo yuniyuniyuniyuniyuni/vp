@@ -1,81 +1,109 @@
 // src/pages/SoloStudyPage.jsx
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom'; 
+import { supabase } from '../supabaseClient'; // <-- Supabase 클라이언트 임포트
 
 function SoloStudyPage() {
   const videoFeedUrl = "http://localhost:8000/video_feed";
-  // [수정] wsStatsUrl을 useEffect 안에서 동적으로 생성
-  
+
   const [studyTime, setStudyTime] = useState("00:00:00");
   const [currentStatus, setCurrentStatus] = useState("Initializing");
-  const [stats, setStats] = useState({ /* ... */ });
+  const [stats, setStats] = useState({
+    drowsy: 0,
+    phone: 0,
+    away: 0,
+    lying_down: 0 
+  });
+
   const [userData, setUserData] = useState(null);
-  const navigate = useNavigate();
+  const navigate = useNavigate(); 
 
   // [수정] 웹소켓 연결 useEffect
   useEffect(() => {
-    // 1. localStorage에서 토큰 가져오기
-    const token = localStorage.getItem('authToken');
+    let ws; // 웹소켓 변수를 외부로 뺌
     
-    // 비로그인 사용자는 /study 접근 시 홈으로 보냄 (솔로 스터디도 로그인 필수로 변경)
-    // (만약 비로그인 솔로 스터디를 허용하려면 로직이 복잡해집니다)
-    if (!token) {
-        console.error("No auth token found, redirecting to home.");
-        navigate('/');
-        return; 
-    }
+    // [수정] Supabase 세션을 비동기적으로 가져오는 함수
+    const connectWebSocket = async () => {
+      let token = null;
+      let wsStatsUrl;
 
-    // 2. 토큰을 포함하여 WebSocket URL 생성
-    const wsStatsUrl = `ws://localhost:8000/ws_stats?token=${token}`;
-    
-    const ws = new WebSocket(wsStatsUrl);
+      // 1. Supabase 세션(로그인 상태)을 가져옴
+      const { data: { session }, error } = await supabase.auth.getSession();
 
-    ws.onopen = () => console.log("WebSocket connected");
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.time) setStudyTime(data.time);
-        if (data.status) setCurrentStatus(data.status);
-        if (data.counts) {
-           // 6. (선택) lying_down을 포함하여 stats를 안전하게 업데이트
-           setStats(prevStats => ({
-            ...prevStats,
-            ...data.counts
-          }));
-        }
-      } catch (e) {
-        console.error("Failed to parse WebSocket message", e);
-      }
-    };
-    ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
-      setCurrentStatus("Error");
-    };
-    ws.onclose = () => {
-      console.log("WebSocket disconnected");
-      if (event.code === 1008) { // 1008: Policy Violation (Invalid token)
-        setCurrentStatus("Auth Error");
-        navigate('/'); // 토큰 오류 시 홈으로
+      if (session) {
+        // 2. 로그인 상태면 Supabase 토큰(Access Token) 사용
+        token = session.access_token;
+        wsStatsUrl = `ws://localhost:8000/ws_stats?token=${token}`;
+        console.log("Connecting WebSocket with Supabase token...");
       } else {
-        setCurrentStatus("Disconnected");
+        // 3. 비로그인 상태면 토큰 없이 연결
+        wsStatsUrl = `ws://localhost:8000/ws_stats`;
+        console.log("Connecting WebSocket as anonymous...");
+      }
+      
+      ws = new WebSocket(wsStatsUrl);
+      
+      ws.onopen = () => console.log("WebSocket connected");
+      ws.onmessage = (event) => {
+        // ... (onmessage 로직 동일)
+        try {
+          const data = JSON.parse(event.data);
+          if (data.time) setStudyTime(data.time);
+          if (data.status) setCurrentStatus(data.status);
+          if (data.counts) {
+             setStats(prevStats => ({ ...prevStats, ...data.counts }));
+          }
+        } catch (e) { console.error("Failed to parse WebSocket message", e); }
+      };
+      ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        setCurrentStatus("Error");
+      };
+      ws.onclose = (event) => {
+        console.log("WebSocket disconnected:", event.reason);
+        if (event.code === 1008) { // 1008: Policy Violation (Invalid token)
+          setCurrentStatus("Auth Error");
+          navigate('/'); // 토큰 오류 시 홈으로
+        } else { setCurrentStatus("Disconnected"); }
+      };
+    };
+
+    connectWebSocket(); // 비동기 함수 실행
+
+    // 컴포넌트 언마운트 시 웹소켓 연결 해제
+    return () => {
+      if (ws) {
+        ws.close();
       }
     };
-    return () => ws.close();
-}, [navigate]); // navigate를 의존성 배열에 추가
+
+  }, [navigate]); // navigate를 의존성 배열에 추가
 
   // ... (로그인 상태 확인 useEffect 및 나머지 코드는 기존과 동일) ...
   useEffect(() => {
-    const dataString = localStorage.getItem('userData');
-    if (dataString) {
-      setUserData(JSON.parse(dataString));
-    }
-  }, []);
+    // Supabase 세션에서 사용자 정보 가져오기
+    const fetchUserData = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserData({
+          name: user.user_metadata.name || user.email, // Google 이름
+          picture: user.user_metadata.picture, // Google 프로필 사진
+          email: user.email
+        });
+      }
+    };
+    fetchUserData();
+  }, []); 
 
-  // 8. 로그아웃 핸들러
-  const handleLogout = () => {
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('userData');
-    navigate('/'); // 로그아웃 후 홈으로 이동
+  // [수정] 로그아웃 핸들러
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error("Error logging out:", error.message);
+    } else {
+      setUserData(null); // 사용자 상태 비우기
+      navigate('/'); // 로그아웃 후 홈으로 이동
+    }
   };
 
   // 9. 뒤로가기 핸들러
@@ -127,7 +155,6 @@ function SoloStudyPage() {
             </div>
           )}
 
-          {/* 11. "나가기" 버튼을 "뒤로가기" 버튼으로 변경 (항상 표시됨) */}
           <button onClick={handleGoBack} className="btn btn-primary">
             뒤로가기
           </button>

@@ -1,53 +1,22 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom'; // 1. useNavigate 임포트
-import { useGoogleLogin } from '@react-oauth/google'; // 2. useGoogleLogin 훅 임포트
+import { supabase } from '../supabaseClient';
 
 function HomePage() {
-  const navigate = useNavigate(); // 3. 페이지 이동을 위한 훅
-
   // 4. Google 로그인 훅 설정
-  const googleLogin = useGoogleLogin({
-    // 'code' 흐름 사용 (가장 안전한 방식)
-    flow: 'auth-code', 
-    
-    // 5. Google 팝업에서 성공적으로 'code'를 받았을 때 실행됨
-    onSuccess: async (codeResponse) => {
-      console.log("Google login success, received code:", codeResponse.code);
-      
-      try {
-        // 6. 백엔드(/auth/google)에 code를 전송
-        const response = await fetch("http://localhost:8000/auth/google", {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ code: codeResponse.code }),
-        });
+  const handleGoogleLogin = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        // (선택) 로그인 후 /select 페이지로 바로 보낼 수 있습니다.
+        redirectTo: 'http://localhost:5173/select'
 
-        if (!response.ok) {
-          throw new Error('Backend authentication failed');
-        }
-
-        const data = await response.json();
-        
-        // 7. 백엔드로부터 받은 우리 앱 전용 토큰과 사용자 정보를 저장
-        console.log("Backend login success:", data.user);
-        
-        // (중요) 앱 전용 토큰을 localStorage에 저장 -> 향후 API 요청 시 사용
-        localStorage.setItem('authToken', data.access_token);
-        localStorage.setItem('userData', JSON.stringify(data.user));
-
-        // 8. 로그인 성공 시 /select 페이지로 이동
-        navigate('/select');
-
-      } catch (error) {
-        console.error("Failed to login with backend:", error);
       }
-    },
-    onError: (error) => {
-      console.error("Google login failed:", error);
+    });
+    if (error) {
+      console.error("Error logging in with Google:", error.message);
     }
-  });
+  };
   return (
     <>
       {/* 1. 헤더 */}
@@ -56,7 +25,7 @@ function HomePage() {
           <div className="logo">
             NODOZE
           </div>
-          <button onClick={() => googleLogin()} className="btn btn-primary-sm">
+          <button onClick={handleGoogleLogin} className="btn btn-primary-sm">
             Google 계정으로 시작하기
           </button>
         </div>
@@ -115,13 +84,13 @@ function HomePage() {
       {/* 4. 최종 CTA 섹션 */}
       <section className="cta-section">
           <div className="container">
-              <h2 className="section-title">더 이상의 의지력 탓은 그만.</h2>
-              <p className="section-subtitle">
-                  NODOZE의 AI 기술로 당신의 잠재된 집중력을 끌어내 보세요.
-              </p>
-              <button onClick={() => googleLogin()} className="btn btn-primary">
-              Google 계정으로 시작하기
-          </button>
+            <h2 className="section-title">더 이상의 의지력 탓은 그만.</h2>
+            <p className="section-subtitle">
+                NODOZE의 AI 기술로 당신의 잠재된 집중력을 끌어내 보세요.
+            </p>
+            <button onClick={handleGoogleLogin} className="btn btn-primary">
+                Google 계정으로 시작하기
+            </button>
           </div>
       </section>
 
