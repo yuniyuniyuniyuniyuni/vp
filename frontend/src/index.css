@@ -1,0 +1,30 @@
+/* @tailwind, @layer, @apply 지시어는 모두 제거합니다.
+  CDN 스크립트가 모든 기본 스타일을 알아서 적용해 줍니다.
+*/
+
+/* 1. body 폰트 및 기본값 (homepage.html의 <style>과 동일하게) */
+body {
+    font-family: 'Noto Sans KR', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    
+    /* @apply bg-white text-gray-800; -> 이 부분은
+      CDN이 자동으로 적용해 주므로 생략해도 괜찮습니다.
+      하지만 명시적으로 남겨둬도 좋습니다.
+    */
+    background-color: white;
+    color: #1f2937; /* text-gray-800 */
+}
+
+/* 2. 커스텀 버튼 스타일 (homepage.html의 <style>과 동일하게) */
+.btn-primary {
+    background-color: #4285F4; /* Google Blue */
+    color: white;
+}
+.btn-primary:hover {
+    background-color: #357ae8;
+}
+
+/* 참고: App.css의 내용은 여전히 필요 없습니다.
+  (삭제했다면 그대로 둡니다.)
+*/
