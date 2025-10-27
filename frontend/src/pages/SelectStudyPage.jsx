@@ -1,28 +1,44 @@
 // src/pages/SelectStudyPage.jsx
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient'; // [추가] Supabase 클라이언트 임포트
 
 function SelectStudyPage() {
-    // [수정] userName 대신 userData 객체 전체를 상태로 관리
+    // [수정] userName 대신 userData 객체 전체를 저장
     const [userData, setUserData] = useState(null); 
     const navigate = useNavigate();
 
-    // [수정] localStorage에서 객체를 가져와 userData 상태에 저장
+    // [수정] 컴포넌트 로드 시 localStorage 대신 Supabase 세션 확인
     useEffect(() => {
-        const userDataString = localStorage.getItem('userData');
-        if (userDataString) {
-            setUserData(JSON.parse(userDataString));
-        } else {
-            // 사용자 정보가 없으면 홈페이지로 리디렉션
-            navigate('/');
-        }
-    }, [navigate]);
+        const fetchUserData = async () => {
+            // 1. Supabase에 현재 로그인한 사용자 정보 요청
+            const { data: { user } } = await supabase.auth.getUser();
 
-    // 로그아웃 핸들러 (기존과 동일)
-    const handleLogout = () => {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('userData');
-        navigate('/');
+            if (user) {
+                // 2. 사용자가 있으면 상태에 저장 (UI 표시용)
+                setUserData({
+                    name: user.user_metadata.name || user.email,
+                    picture: user.user_metadata.picture
+                });
+            } else {
+                // 3. 사용자가 없으면(로그인 안 됐으면) 홈페이지로 리디렉션
+                console.log("No user found, redirecting to home.");
+                navigate('/');
+            }
+        };
+
+        fetchUserData();
+    }, [navigate]); // navigate가 변경될 때만 실행
+
+    // [수정] 로그아웃 핸들러
+    const handleLogout = async () => {
+        const { error } = await supabase.auth.signOut(); // Supabase 로그아웃 호출
+        if (error) {
+            console.error("Error logging out:", error.message);
+        }
+        // 로그아웃 시 자동으로 onAuthStateChange가 트리거되어
+        // 다른 페이지(예: SoloStudyPage)에서도 로그아웃이 감지됩니다.
+        navigate('/'); // 홈으로 이동
     };
 
     return (
@@ -34,8 +50,7 @@ function SelectStudyPage() {
                         NODOZE
                     </Link>
                     
-                    {/* --- [수정된 부분] --- */}
-                    {/* 기존 user-info div를 요청하신 코드로 교체 */}
+                    {/* [수정] 사용자 정보 UI (userData가 null이 아닐 때만 표시) */}
                     {userData && (
                         <div className="profile-section">
                         <div className="profile-info">
@@ -51,14 +66,12 @@ function SelectStudyPage() {
                         </div>
                         </div>
                     )}
-                    {/* --- [수정 완료] --- */}
-                    
                 </div>
             </header>
 
             {/* 2. 메인 콘텐츠 (모드 선택) */}
             <main className="select-study-main">
-                {/* 8. 하드코딩된 이름 대신 상태 변수 사용 */}
+                {/* [수정] 환영 메시지 (userData가 로드된 후 표시) */}
                 <h1 className="welcome-title">안녕하세요 {userData ? userData.name : '...'}님!</h1>
                 <p className="welcome-subtitle">오늘은 어떤 모드로 스터디를 시작하시겠어요?</p>
 

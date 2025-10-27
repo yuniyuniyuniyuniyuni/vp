@@ -1,13 +1,9 @@
 // src/pages/GroupStudyPage.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react'; // 1. useRef 임포트
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 
-/**
- * '다른 참여자' 수(1~9명)에 따라 최적의 그리드 클래스를 반환하는 함수
- * @param {number} count - '나'를 제외한 다른 참여자 수
- * @returns {string} - CSS 그리드 클래스 문자열
- */
+// ... (getGroupGridClasses, WebcamCard 함수 기존과 동일) ...
 const getGroupGridClasses = (count) => {
     if (count === 1) return "grid-cols-1";
     if (count === 2) return "grid-cols-2";
@@ -16,29 +12,21 @@ const getGroupGridClasses = (count) => {
     if (count <= 6) return "grid-cols-3";
     if (count <= 8) return "grid-cols-3";
     if (count === 9) return "grid-cols-3";
-    if (count === 10) return "grid-cols-3"; // 10명 레이아웃 추가
-    return "grid-cols-3"; // 기본값
+    if (count === 10) return "grid-cols-3"; 
+    return "grid-cols-3";
 };
 
-/**
- * 웹캠 카드를 렌더링하는 컴포넌트
- * '나'일 경우 videoFeedUrl을 받아 실제 영상을 표시합니다.
- */
 const WebcamCard = ({ name, status, isMe = false, videoFeedUrl }) => {
-    
-    let statusColorClass = 'status-green'; // 집중
+    let statusColorClass = 'status-green'; 
     if (status === '자리 비움') statusColorClass = 'status-yellow';
-    // ai_monitor.py의 상태 문자열(Using Phone, Drowsy 등)에 맞춰 '딴짓' 조건 확장
     if (status === 'Using Phone' || status === 'Drowsy' || status === 'Lying Down' || status === '딴짓' || status === '졸음') {
         statusColorClass = 'status-red';
     }
-
     const cardClass = isMe ? "webcam-card is-me" : "webcam-card";
 
     return (
         <div className={cardClass}>
             <div className="webcam-placeholder">
-                {/* '나'일 경우 플레이스홀더 대신 img 태그(비디오 피드) 렌더링 */}
                 {isMe ? (
                     <img src={videoFeedUrl} alt="My Webcam" className="webcam-video-feed" />
                 ) : (
@@ -55,45 +43,37 @@ const WebcamCard = ({ name, status, isMe = false, videoFeedUrl }) => {
 
 
 function GroupStudyPage() {
-    // --- 엔드포인트 ---
     const videoFeedUrl = "http://localhost:8000/video_feed";
-    // wsStatsUrl은 useEffect 내에서 토큰과 함께 동적으로 생성됩니다.
 
-    // --- AI 모니터링 상태 (웹소켓) ---
     const [studyTime, setStudyTime] = useState("00:00:00");
     const [currentStatus, setCurrentStatus] = useState("Initializing");
-    const [stats, setStats] = useState({
-        drowsy: 0,
-        phone: 0,
-        away: 0,
-        lying_down: 0 // 눕기 감지 추가
-    });
-
-    // --- UI 상태 ---
+    const [stats, setStats] = useState({ drowsy: 0, phone: 0, away: 0, lying_down: 0 });
     const [activeStatsTab, setActiveStatsTab] = useState('tab-personal-stats');
     const [mainViewTab, setMainViewTab] = useState('group');
     
-    // --- 사용자 로그인 상태 ---
     const [userData, setUserData] = useState(null); 
     const navigate = useNavigate(); 
+    
+    // 2. [수정] WebSocket 인스턴스를 저장하기 위해 useRef 사용
+    const ws = useRef(null);
 
-    // --- 1. 웹소켓 연결 (AI 모니터링 데이터 수신) ---
+    // [수정] 웹소켓 연결 useEffect
     useEffect(() => {
-        let ws;
         
         const connectWebSocket = async () => {
             const { data: { session }, error } = await supabase.auth.getSession();
 
             if (session) {
-                // 로그인 상태면 Supabase 토큰 사용
                 const token = session.access_token;
                 const wsStatsUrl = `ws://localhost:8000/ws_stats?token=${token}`;
                 console.log("Connecting WebSocket with Supabase token...");
                 
-                ws = new WebSocket(wsStatsUrl);
-                // ... (ws.onopen, onmessage 등 동일한 로직) ...
-                ws.onopen = () => console.log("WebSocket connected");
-                ws.onmessage = (event) => {
+                // 3. [수정] ws.current에 WebSocket 인스턴스 할당
+                ws.current = new WebSocket(wsStatsUrl);
+                
+                ws.current.onopen = () => console.log("WebSocket connected");
+                
+                ws.current.onmessage = (event) => {
                     try {
                         const data = JSON.parse(event.data);
                         if (data.time) setStudyTime(data.time);
@@ -103,14 +83,15 @@ function GroupStudyPage() {
                         }
                     } catch (e) { console.error("Failed to parse WebSocket message", e); }
                 };
-                ws.onerror = (error) => { console.error("WebSocket error:", error); };
-                ws.onclose = (event) => {
+                
+                ws.current.onerror = (error) => { console.error("WebSocket error:", error); };
+                
+                ws.current.onclose = (event) => {
                     console.log("WebSocket disconnected:", event.reason);
                     if (event.code === 1008) { navigate('/'); }
                     else { setCurrentStatus("Disconnected"); }
                 };
             } else {
-                // [수정] 비로그인 상태면 그룹 스터디 이용 불가. 홈으로 리디렉션.
                 console.log("No session found. Redirecting to home.");
                 navigate('/');
             }
@@ -118,10 +99,16 @@ function GroupStudyPage() {
 
         connectWebSocket();
 
-        return () => ws.close();
-    }, [navigate]); // navigate를 의존성 배열에 추가
+        // 4. [수정] 컴포넌트 언마운트 시 ws.current를 확인하고 close
+        return () => {
+            if (ws.current) {
+                console.log("Closing WebSocket...");
+                ws.current.close();
+            }
+        };
+    }, [navigate]);
 
-    // --- 2. 로그인 상태(localStorage) 확인 ---
+    // 로그인 상태 확인 (UI 표시용)
     useEffect(() => {
         const fetchUserData = async () => {
             const { data: { user } } = await supabase.auth.getUser();
@@ -132,46 +119,39 @@ function GroupStudyPage() {
                     email: user.email
                 });
             } else {
-                 navigate('/'); // (선택) 유저 정보 없으면 홈으로
+                 navigate('/'); 
             }
         };
         fetchUserData();
     }, [navigate]);
 
-    // --- 이벤트 핸들러 ---
+    // 로그아웃 핸들러
     const handleLogout = async () => {
         await supabase.auth.signOut();
         setUserData(null); 
         navigate('/'); 
     };
 
+    // 뒤로가기 핸들러
     const handleGoBack = () => {
-        navigate(-1); // 이전 페이지로 이동 (예: /groups)
+        navigate(-1); 
     };
 
     // --- 렌더링을 위한 데이터 준비 ---
     const userName = userData ? userData.name : '...';
     const statusClassName = `status-${currentStatus.replace(/\s+/g, '')}`;
-
-    // '나'의 데이터 (이름과 상태가 실시간으로 변경됨)
     const myData = { 
         id: 'me', 
         name: userName, 
-        status: currentStatus, // '집중' 하드코딩 대신 실시간 'currentStatus' 사용
+        status: currentStatus, 
         isMe: true 
     };
-    
-    // '나'를 제외한 다른 참여자 데이터 (테스트용)
     const otherParticipants = [
         { id: 1, name: '김민준', status: '자리 비움' },
         { id: 2, name: '박서연', status: '집중' },
         { id: 3, name: '이도윤', status: '딴짓' },
         { id: 4, name: '최지우', status: '집중' },
-        { id: 5, name: '강하준', status: '자리 비움' },
-        { id: 6, name: '윤채원', status: '집중' },
-        { id: 7, name: '장민서', status: '딴짓' },
     ];
-
     const gridClasses = getGroupGridClasses(otherParticipants.length);
 
 
@@ -182,7 +162,6 @@ function GroupStudyPage() {
             <aside className="sidebar">
                 <Link to="/" className="logo">NODOZE</Link>
 
-                {/* '내 상태' (웹소켓 연동됨) */}
                 <div className="stats-card-time">
                     <p className="card-label">오늘의 순공시간</p>
                     <p className="card-value">{studyTime}</p>
@@ -192,7 +171,6 @@ function GroupStudyPage() {
                     <span className={`status-badge ${statusClassName}`}>{currentStatus}</span>
                 </div>
                 
-                {/* 로그인 정보 (localStorage 연동) */}
                 {userData && (
                     <div className="profile-section">
                     <div className="profile-info">
@@ -209,7 +187,6 @@ function GroupStudyPage() {
                     </div>
                 )}
 
-                {/* '뒤로가기' 버튼 */}
                 <button onClick={handleGoBack} className="btn btn-primary">
                     뒤로가기
                 </button>
@@ -238,15 +215,16 @@ function GroupStudyPage() {
                 
                 <div className="webcam-view">
                     {/* 탭 1: 그룹 뷰 */}
-                    {mainViewTab === 'my-webcam' && (
-                        <div className="my-webcam-view">
-                            <WebcamCard 
-                                key={myData.id} 
-                                name={myData.name} 
-                                status={myData.status} 
-                                isMe={true} 
-                                videoFeedUrl={videoFeedUrl} 
-                            />
+                    {mainViewTab === 'group' && (
+                        <div className={`webcam-grid ${gridClasses}`}>
+                            {otherParticipants.map((member) => (
+                                <WebcamCard 
+                                    key={member.id} 
+                                    name={member.name} 
+                                    status={member.status} 
+                                    isMe={false} 
+                                />
+                            ))}
                         </div>
                     )}
 
@@ -270,7 +248,6 @@ function GroupStudyPage() {
                     <button className="btn btn-control">🎤 마이크 끄기</button>
                     <button className="btn btn-control">📹 비디오 끄기</button>
                     <button className="btn btn-control">🖥️ 화면 공유</button>
-                    {/* 나가기 버튼은 그룹 선택 페이지로 이동 */}
                     <Link to="/groups" className="btn btn-danger">🚪 나가기</Link>
                 </div>
                 
