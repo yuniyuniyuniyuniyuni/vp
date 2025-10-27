@@ -1,29 +1,44 @@
 // src/pages/GroupSelectPage.jsx
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient'; // [추가] Supabase 클라이언트 임포트
 
 function GroupSelectPage() {
-    // [수정] userName 대신 userData 객체 전체를 상태로 관리
+    // [수정] userName 대신 userData 객체 전체를 저장
     const [userData, setUserData] = useState(null);
     const navigate = useNavigate();
 
-    // [수정] localStorage에서 객체를 가져와 userData 상태에 저장
+    // [수정] 컴포넌트 로드 시 localStorage 대신 Supabase 세션 확인
     useEffect(() => {
-        const userDataString = localStorage.getItem('userData');
-        if (userDataString) {
-            setUserData(JSON.parse(userDataString));
-        } else {
-            navigate('/');
-        }
+        const fetchUserData = async () => {
+            // 1. Supabase에 현재 로그인한 사용자 정보 요청
+            const { data: { user } } = await supabase.auth.getUser();
+
+            if (user) {
+                // 2. 사용자가 있으면 상태에 저장
+                setUserData({
+                    name: user.user_metadata.name || user.email,
+                    picture: user.user_metadata.picture
+                });
+            } else {
+                // 3. 사용자가 없으면(로그인 안 됐으면) 홈페이지로 리디렉션
+                console.log("No user found, redirecting to home.");
+                navigate('/');
+            }
+        };
+
+        fetchUserData();
     }, [navigate]);
 
-    // 로그아웃 핸들러 (기존과 동일)
-    const handleLogout = () => {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('userData');
-        navigate('/');
+    // [수정] 로그아웃 핸들러
+    const handleLogout = async () => {
+        const { error } = await supabase.auth.signOut(); // Supabase 로그아웃 호출
+        if (error) {
+            console.error("Error logging out:", error.message);
+        }
+        navigate('/'); // 홈으로 이동
     };
-
+    
     return (
         <div className="page-layout-gray">
 
@@ -33,9 +48,8 @@ function GroupSelectPage() {
                     <Link to="/" className="logo-lg">
                         NODOZE
                     </Link>
-                    
-                    {/* --- [수정된 부분] --- */}
-                    {/* 기존 user-info div를 요청하신 코드로 교체 */}
+
+                    {/* [수정] 사용자 정보 UI (userData가 null이 아닐 때만 표시) */}
                     {userData && (
                         <div className="profile-section">
                         <div className="profile-info">
@@ -51,8 +65,6 @@ function GroupSelectPage() {
                         </div>
                         </div>
                     )}
-                    {/* --- [수정 완료] --- */}
-
                 </div>
             </header>
 
