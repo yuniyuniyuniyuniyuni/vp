@@ -1,7 +1,7 @@
 // src/pages/SoloStudyPage.jsx
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom'; 
-import { supabase } from '../supabaseClient'; // <-- Supabase 클라이언트 임포트
+import { supabase } from '../supabaseClient'; 
 
 function SoloStudyPage() {
   const videoFeedUrl = "http://localhost:8000/video_feed";
@@ -18,25 +18,18 @@ function SoloStudyPage() {
   const [userData, setUserData] = useState(null);
   const navigate = useNavigate(); 
 
-  // [수정] 웹소켓 연결 useEffect
   useEffect(() => {
-    let ws; // 웹소켓 변수를 외부로 뺌
-    
-    // [수정] Supabase 세션을 비동기적으로 가져오는 함수
+    let ws;
     const connectWebSocket = async () => {
       let token = null;
       let wsStatsUrl;
-
-      // 1. Supabase 세션(로그인 상태)을 가져옴
       const { data: { session }, error } = await supabase.auth.getSession();
 
       if (session) {
-        // 2. 로그인 상태면 Supabase 토큰(Access Token) 사용
         token = session.access_token;
         wsStatsUrl = `ws://localhost:8000/ws_stats?token=${token}`;
         console.log("Connecting WebSocket with Supabase token...");
       } else {
-        // 3. 비로그인 상태면 토큰 없이 연결
         wsStatsUrl = `ws://localhost:8000/ws_stats`;
         console.log("Connecting WebSocket as anonymous...");
       }
@@ -45,7 +38,6 @@ function SoloStudyPage() {
       
       ws.onopen = () => console.log("WebSocket connected");
       ws.onmessage = (event) => {
-        // ... (onmessage 로직 동일)
         try {
           const data = JSON.parse(event.data);
           if (data.time) setStudyTime(data.time);
@@ -61,33 +53,28 @@ function SoloStudyPage() {
       };
       ws.onclose = (event) => {
         console.log("WebSocket disconnected:", event.reason);
-        if (event.code === 1008) { // 1008: Policy Violation (Invalid token)
+        if (event.code === 1008) {
           setCurrentStatus("Auth Error");
-          navigate('/'); // 토큰 오류 시 홈으로
+          navigate('/');
         } else { setCurrentStatus("Disconnected"); }
       };
     };
 
-    connectWebSocket(); // 비동기 함수 실행
-
-    // 컴포넌트 언마운트 시 웹소켓 연결 해제
+    connectWebSocket();
     return () => {
       if (ws) {
         ws.close();
       }
     };
+  }, [navigate]); 
 
-  }, [navigate]); // navigate를 의존성 배열에 추가
-
-  // ... (로그인 상태 확인 useEffect 및 나머지 코드는 기존과 동일) ...
   useEffect(() => {
-    // Supabase 세션에서 사용자 정보 가져오기
     const fetchUserData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setUserData({
-          name: user.user_metadata.name || user.email, // Google 이름
-          picture: user.user_metadata.picture, // Google 프로필 사진
+          name: user.user_metadata.name || user.email,
+          picture: user.user_metadata.picture,
           email: user.email
         });
       }
@@ -95,22 +82,19 @@ function SoloStudyPage() {
     fetchUserData();
   }, []); 
 
-  // [수정] 로그아웃 핸들러
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.error("Error logging out:", error.message);
     } else {
-      setUserData(null); // 사용자 상태 비우기
-      navigate('/'); // 로그아웃 후 홈으로 이동
+      setUserData(null);
+      navigate('/');
     }
   };
 
-  // 9. 뒤로가기 핸들러
   const handleGoBack = () => {
-    navigate(-1); // 브라우저 히스토리에서 뒤로 한 칸 이동
+    navigate(-1);
   };
-
 
   const statusClassName = `status-${currentStatus.replace(/\s+/g, '')}`;
 
@@ -127,9 +111,7 @@ function SoloStudyPage() {
 
       <div className="page-body-sidebar">
 
-        {/* 사이드바 */}
         <aside className="sidebar">
-          {/* ... (순공시간, 현재 상태 카드) ... */}
           <div className="stats-card-time">
             <p className="card-label">오늘의 순공시간</p>
             <p className="card-value">{studyTime}</p>
@@ -138,7 +120,6 @@ function SoloStudyPage() {
             <p className="card-label">현재 상태</p>
             <span className={`status-badge ${statusClassName}`}>{currentStatus}</span>
           </div>
-    {/* 10. 로그인 상태일 때만 사용자 정보와 로그아웃 버튼 표시 */}
           {userData && (
             <div className="profile-section">
               <div className="profile-info">
@@ -158,19 +139,12 @@ function SoloStudyPage() {
           <button onClick={handleGoBack} className="btn btn-primary">
             뒤로가기
           </button>
-          
-          {/* --- [수정 완료] --- */}
         </aside>
-
-        {/* 메인 콘텐츠 영역 */}
         <main className="solo-main">
-
-          {/* 웹캠 영상 */}
           <div className="video-feed">
             <img src={videoFeedUrl} alt="AI Monitor Feed" />
           </div>
 
-          {/* 일일 통계 */}
           <div className="daily-stats-card">
             <h2 className="card-title">일일 통계</h2>
             
