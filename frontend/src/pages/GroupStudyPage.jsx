@@ -124,7 +124,7 @@ function GroupStudyPage() {
     };
 
     const handleGoBack = () => {
-        navigate(-1); 
+        navigate('/groups'); 
     };
     const userName = userData ? userData.name : '...';
     const statusClassName = `status-${currentStatus.replace(/\s+/g, '')}`;
@@ -254,7 +254,7 @@ function GroupStudyPage() {
                     
                     <div className="stats-tabs-content">
                         <div className={`stats-tabs-pane personal-stats ${activeStatsTab === 'tab-personal-stats' ? 'active' : ''}`}>
-                            <div className="stats-grid">
+                            <div className="stats-grid-group">
                                 <div className="stats-grid-item">
                                     <p className="stat-value">{stats.away}<span>회</span></p>
                                     <p className="stat-label">자리 비움</p>
