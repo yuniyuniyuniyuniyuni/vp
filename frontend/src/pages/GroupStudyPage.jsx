@@ -1,9 +1,9 @@
 // src/pages/GroupStudyPage.jsx
-import React, { useState, useEffect, useRef } from 'react'; // 1. useRef 임포트
+
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 
-// ... (getGroupGridClasses, WebcamCard 함수 기존과 동일) ...
 const getGroupGridClasses = (count) => {
     if (count === 1) return "grid-cols-1";
     if (count === 2) return "grid-cols-2";
@@ -53,11 +53,7 @@ function GroupStudyPage() {
     
     const [userData, setUserData] = useState(null); 
     const navigate = useNavigate(); 
-    
-    // 2. [수정] WebSocket 인스턴스를 저장하기 위해 useRef 사용
     const ws = useRef(null);
-
-    // [수정] 웹소켓 연결 useEffect
     useEffect(() => {
         
         const connectWebSocket = async () => {
@@ -67,8 +63,7 @@ function GroupStudyPage() {
                 const token = session.access_token;
                 const wsStatsUrl = `ws://localhost:8000/ws_stats?token=${token}`;
                 console.log("Connecting WebSocket with Supabase token...");
-                
-                // 3. [수정] ws.current에 WebSocket 인스턴스 할당
+
                 ws.current = new WebSocket(wsStatsUrl);
                 
                 ws.current.onopen = () => console.log("WebSocket connected");
@@ -98,8 +93,6 @@ function GroupStudyPage() {
         };
 
         connectWebSocket();
-
-        // 4. [수정] 컴포넌트 언마운트 시 ws.current를 확인하고 close
         return () => {
             if (ws.current) {
                 console.log("Closing WebSocket...");
@@ -108,7 +101,6 @@ function GroupStudyPage() {
         };
     }, [navigate]);
 
-    // 로그인 상태 확인 (UI 표시용)
     useEffect(() => {
         const fetchUserData = async () => {
             const { data: { user } } = await supabase.auth.getUser();
@@ -125,19 +117,15 @@ function GroupStudyPage() {
         fetchUserData();
     }, [navigate]);
 
-    // 로그아웃 핸들러
     const handleLogout = async () => {
         await supabase.auth.signOut();
         setUserData(null); 
         navigate('/'); 
     };
 
-    // 뒤로가기 핸들러
     const handleGoBack = () => {
         navigate(-1); 
     };
-
-    // --- 렌더링을 위한 데이터 준비 ---
     const userName = userData ? userData.name : '...';
     const statusClassName = `status-${currentStatus.replace(/\s+/g, '')}`;
     const myData = { 
@@ -157,8 +145,6 @@ function GroupStudyPage() {
 
     return (
         <div className="page-layout-group">
-            
-            {/* 1. 왼쪽 사이드바 */}
             <aside className="sidebar">
                 <Link to="/" className="logo">NODOZE</Link>
 
@@ -191,8 +177,6 @@ function GroupStudyPage() {
                     뒤로가기
                 </button>
             </aside>
-            
-            {/* 2. 메인 컨텐츠 (그룹 정보) */}
             <main className="group-main">
                 <header className="group-main-header">
                     <h1>그룹 스터디: 서울대 모여라</h1>
@@ -214,7 +198,6 @@ function GroupStudyPage() {
                 </header>
                 
                 <div className="webcam-view">
-                    {/* 탭 1: 그룹 뷰 */}
                     {mainViewTab === 'group' && (
                         <div className={`webcam-grid ${gridClasses}`}>
                             {otherParticipants.map((member) => (
@@ -227,8 +210,6 @@ function GroupStudyPage() {
                             ))}
                         </div>
                     )}
-
-                    {/* 탭 2: 내 웹캠 뷰 (영상 피드 및 실시간 상태 연동) */}
                     {mainViewTab === 'my-webcam' && (
                         <div className="my-webcam-view">
                             <WebcamCard 
@@ -242,16 +223,13 @@ function GroupStudyPage() {
                     )}
                 </div>
 
-                
-                {/* 컨트롤 바 */}
                 <div className="controls-bar">
                     <button className="btn btn-control">🎤 마이크 끄기</button>
                     <button className="btn btn-control">📹 비디오 끄기</button>
                     <button className="btn btn-control">🖥️ 화면 공유</button>
                     <Link to="/groups" className="btn btn-danger">🚪 나가기</Link>
                 </div>
-                
-                {/* 하단 통계 섹션 (카드) */}
+
                 <div className="bottom-stats-card">
                     <nav className="stats-tabs-nav">
                         <button 
@@ -275,7 +253,6 @@ function GroupStudyPage() {
                     </nav>
                     
                     <div className="stats-tabs-content">
-                        {/* 탭 1: 내 일일 통계 (웹소켓 'stats' 연동) */}
                         <div className={`stats-tabs-pane personal-stats ${activeStatsTab === 'tab-personal-stats' ? 'active' : ''}`}>
                             <div className="stats-grid">
                                 <div className="stats-grid-item">
@@ -292,8 +269,6 @@ function GroupStudyPage() {
                                 </div>
                             </div>
                         </div>
-                        
-                        {/* 탭 2: 그룹 실시간 랭킹 (userName 및 studyTime 연동) */}
                         <div className={`stats-tabs-pane ${activeStatsTab === 'tab-group-ranking' ? 'active' : ''}`}>
                             <ul className="group-ranking-list">
                                 <li>
@@ -314,8 +289,6 @@ function GroupStudyPage() {
                                 </li>
                             </ul>
                         </div>
-                        
-                        {/* 탭 3: 그룹 채팅 (userName 연동) */}
                         <div className={`stats-tabs-pane group-chat ${activeStatsTab === 'tab-group-chat' ? 'active' : ''}`}>
                             <div className="chat-window">
                                 <div className="chat-message-other"><strong>김민준:</strong> 다들 화이팅!</div>
