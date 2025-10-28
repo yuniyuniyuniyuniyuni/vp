@@ -93,7 +93,7 @@ function SoloStudyPage() {
   };
 
   const handleGoBack = () => {
-    navigate(-1);
+    navigate('/select');
   };
 
   const statusClassName = `status-${currentStatus.replace(/\s+/g, '')}`;
@@ -120,6 +120,9 @@ function SoloStudyPage() {
             <p className="card-label">현재 상태</p>
             <span className={`status-badge ${statusClassName}`}>{currentStatus}</span>
           </div>
+          <Link to='/ranking' className="btn-ranking">
+            🏆 랭킹 보러가기
+          </Link>
           {userData && (
             <div className="profile-section">
               <div className="profile-info">
@@ -134,11 +137,12 @@ function SoloStudyPage() {
                 </div>
               </div>
             </div>
-          )}
-
-          <button onClick={handleGoBack} className="btn btn-primary">
-            뒤로가기
-          </button>
+          )}                  
+          <div className='stats-footer-note'>
+            <button onClick={handleGoBack} className="btn btn-primary">
+              뒤로가기
+            </button>   
+          </div>
         </aside>
         <main className="solo-main">
           <div className="video-feed">

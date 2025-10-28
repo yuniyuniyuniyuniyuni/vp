@@ -58,6 +58,7 @@ def video_feed():
 async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None)):
 
     user_email = None                                               # type: ignore
+    user_name = "Ananymous"                                           # type: ignore
     if token:
         if supabase is None:
             await websocket.close(code=1011, reason="Supabase client not initialized")
@@ -69,7 +70,9 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
             
         try:
             payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=[ALGORITHM], options={"verify_aud": False})
-            user_email: str = payload.get("email")                   # type: ignore       
+            user_email: str = payload.get("email")                   # type: ignore   
+            user_metadata = payload.get("user_metadata", {})
+            user_name: str = user_metadata.get("name", user_email.split('@')[0])    
             if user_email is None:
                 raise JWTError("User email not in token payload")
         except JWTError as e:
@@ -90,7 +93,10 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
             if not response.data: 
                 print(f"No stats row found for {user_email}. Creating one.")
                 supabase.table("user_stats").upsert(
-                    {"user_email": user_email, "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}, 
+                    {
+                     "user_email": user_email,
+                     "user_name": user_name, 
+                     "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}, 
                     on_conflict="user_email"
                 ).execute()
                 ai_engine_instance.load_user_stats({})
@@ -143,6 +149,26 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
     except Exception as e:
         print(f"WebSocket error: {e}")
         await websocket.close(code=1011)
+        
+@app.get("/ranking/top10")
+async def get_top10_ranking():
+
+    if supabase is None:
+        raise HTTPException(status_code=503, detail="Supabase client not initialized")
+    try:
+        response = supabase.table("user_stats") \
+                         .select("user_name, total_study_seconds") \
+                         .order("total_study_seconds", desc=True) \
+                         .limit(10) \
+                         .execute()
+        
+        if not response.data:
+            return [] 
+        return response.data
+    
+    except Exception as e:
+        print(f"Error fetching ranking: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch ranking: {e}")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
