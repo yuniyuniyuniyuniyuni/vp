@@ -45,7 +45,7 @@ function SelectStudyPage() {
 			<header className="page-header">
 				<div className="container">
 					<Link to="/" className="logo-lg">
-						NODOZE
+						NO<span className='blue-doze'>DOZE</span>
 					</Link>
 					{userData && (
 						<div className="profile-section">

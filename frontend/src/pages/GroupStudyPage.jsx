@@ -146,7 +146,7 @@ function GroupStudyPage() {
     return (
         <div className="page-layout-group">
             <aside className="sidebar">
-                <Link to="/" className="logo">NODOZE</Link>
+                <Link to="/" className="logo-lg">NO<span className='blue-doze'>DOZE</span></Link>
 
                 <div className="stats-card-time">
                     <p className="card-label">오늘의 순공시간</p>

@@ -16,17 +16,13 @@ function HomePage() {
     }
   };
   const navigate = useNavigate();
-
-  // '지금 바로 순공시간 측정하기' 클릭시 로그인 상태를 확인하고 이동
   const handleStartStudy = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
-        // 로그인 상태면 선택 화면으로 이동
         navigate('/select');
       } else {
-        // 비로그인 상태면 OAuth 로그인 흐름 시작 (로그인 후 redirectTo로 /select로 돌아옵니다)
         navigate('/study');
       }
     } catch (err) {
@@ -38,8 +34,8 @@ function HomePage() {
     <>
       <header className="homepage-header">
         <div className="container">
-          <div className="logo">
-            NODOZE
+          <div className="logo-lg">
+            NO<span className="blue-doze">DOZE</span>
           </div>
           <button onClick={handleGoogleLogin} className="btn btn-primary-sm">
             Google 계정으로 시작하기
@@ -53,7 +49,7 @@ function HomePage() {
           AI가 <span>실시간으로</span> 지켜줍니다
         </h1>
         <p className="hero-subtitle">
-          '딴짓'은 그만. NODOZE의 AI 버전 기술이 당신의 졸음, 스마트폰 사용을 감지하여 오직 '진짜 공부 시간'만 정확히 측정하고 관리합니다.
+          '딴짓'은 그만. NODOZE의 AI 버전 기술이 당신의 졸음, 스마트폰 사용을 감지하여 <br /> 오직 '진짜 공부 시간'만 정확히 측정하고 관리합니다.
         </p>
         <button onClick={handleStartStudy} className="btn btn-primary">
           지금 바로 순공시간 측정하기

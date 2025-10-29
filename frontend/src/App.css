@@ -122,7 +122,9 @@ img {
     color: #000;
     text-decoration: none;
 }
-
+.blue-doze {
+  color: #2563eb;
+}
 .homepage-main {
     text-align: center;
     padding-top: 6rem;
@@ -1207,7 +1209,7 @@ img {
   z-index: 1000;
 }
 
-/* 모달 카드 */
+
 .modal-card {
   background-color: white;
   padding: 2rem;
@@ -1222,7 +1224,7 @@ img {
   margin-bottom: 1.5rem;
 }
 
-/* 폼 그룹 (라벨 + 인풋) */
+
 .form-group {
   margin-bottom: 1.5rem;
 }
@@ -1233,17 +1235,17 @@ img {
   margin-bottom: 0.5rem;
 }
 
-/* 폼 인풋 (텍스트) */
+
 .form-group input[type="text"] {
   width: 100%;
   padding: 0.75rem;
   font-size: 1rem;
   border: 1px solid #ddd;
   border-radius: 8px;
-  box-sizing: border-box; /* 패딩이 너비에 포함되도록 */
+  box-sizing: border-box;
 }
 
-/* 폼 인풋 (라디오) */
+
 .radio-group {
   display: flex;
   gap: 1.5rem;
@@ -1259,7 +1261,7 @@ img {
   height: 16px;
 }
 
-/* 모달 버튼 영역 */
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -1275,16 +1277,16 @@ img {
 
 .card-footer-buttons {
   display: flex;
-  gap: 0.5rem; /* 버튼 사이 간격 */
+  gap: 0.5rem;
 }
 
-/* 작은 빨간색 버튼 (삭제용) */
+
 .btn-danger-sm {
   padding: 0.25rem 0.6rem;
   font-size: 0.875rem;
   font-weight: 600;
   color: #fff;
-  background-color: #ef4444; /* 빨간색 */
+  background-color: #ef4444;
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -1294,5 +1296,99 @@ img {
 }
 
 .btn-danger-sm:hover {
-  background-color: #dc2626; /* 더 진한 빨간색 */
+  background-color: #dc2626;
+}
+
+.ranking-card {
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.05);
+  padding: 1.5rem 0.5rem;
+  max-width: 700px;
+  margin: 2rem auto 0;
+}
+
+
+.ranking-list {
+  list-style-type: none;
+  padding: 0;
+  margin: 0;
+}
+
+
+.ranking-item {
+  display: flex;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  margin: 0 1rem;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+}
+
+
+.ranking-item:hover {
+  background-color: #f9f9f9;
+}
+
+
+.ranking-item + .ranking-item {
+  border-top: 1px solid #f0f0f0;
+}
+
+
+.rank-badge {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #888;
+  width: 40px;
+  text-align: center;
+  margin-right: 1.5rem;
+}
+
+
+.rank-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #333;
+}
+
+
+.rank-time {
+  margin-left: auto;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #555;
+  letter-spacing: 0.5px;
+}
+
+
+
+
+.ranking-item.rank-1,
+.ranking-item.rank-2,
+.ranking-item.rank-3 {
+  background-color: #fdfaf2;
+  border: none;
+  margin-bottom: 0.5rem;
+}
+
+
+.rank-badge.rank-1 {
+  color: #D4AF37;
+  font-size: 1.75rem;
+  content: '🥇';
+}
+
+
+.rank-badge.rank-2 {
+  color: #C0C0C0;
+  font-size: 1.6rem;
+  content: '🥈';
+}
+
+
+.rank-badge.rank-3 {
+  color: #CD7F32;
+  font-size: 1.5rem;
+  content: '🥉';
 }

@@ -87,7 +87,6 @@ function GroupSelectPage() {
       name: newGroupName, 
       privacy_status: newGroupPrivacy, 
       created_by: userData.id,
-      // 비공개일 때만 password를 설정, 공개면 null
       password: newGroupPrivacy === 'private' ? newGroupPassword : null 
     };
 
@@ -101,20 +100,18 @@ function GroupSelectPage() {
       alert(`그룹 생성 실패: ${error.message}`);
     } else {
       alert('그룹이 성공적으로 생성되었습니다!');
-      setIsCreateModalOpen(false); // 모달 닫기
-      setNewGroupName(''); // 폼 초기화
+      setIsCreateModalOpen(false);
+      setNewGroupName('');
       setNewGroupPrivacy('public');
-      setNewGroupPassword(''); // [추가] 비밀번호 폼 초기화
+      setNewGroupPassword('');
       setGroups([data[0], ...groups]);
     }
   };
 
   const handleDeleteGroup = async (groupId) => {
-    // 실수로 삭제하는 것을 방지
     if (!window.confirm("정말로 이 그룹을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) {
       return;
     }
-
     const { error } = await supabase
       .from('groups')
       .delete()
@@ -125,14 +122,12 @@ function GroupSelectPage() {
       alert(`그룹 삭제 실패: ${error.message}`);
     } else {
       alert('그룹이 삭제되었습니다.');
-      // UI에서도 즉시 그룹을 제거
       setGroups(prevGroups => prevGroups.filter(group => group.id !== groupId));
     }
   };
 
   const handleJoinClick = (group) => {
     if (group.privacy_status === 'public') {
-      // 공개방이면 바로 이동
       navigate(`/group/${group.id}`);
     } else {
       setPasswordModalTarget(group); 
@@ -146,7 +141,7 @@ function GroupSelectPage() {
     if (passwordInput === passwordModalTarget.password) {
       alert('비밀번호가 일치합니다. 그룹으로 이동합니다.');
       navigate(`/group/${passwordModalTarget.id}`);
-      setPasswordModalTarget(null); // 모달 닫기
+      setPasswordModalTarget(null);
     } else {
       alert('비밀번호가 틀렸습니다.');
     }
@@ -157,7 +152,7 @@ function GroupSelectPage() {
       <header className="page-header-sticky">
         <div className="container">
           <Link to="/" className="logo-lg">
-            NODOZE
+            NO<span className="blue-doze">DOZE</span>
           </Link>
           {userData && (
             <div className="profile-section">
