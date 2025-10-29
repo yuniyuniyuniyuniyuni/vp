@@ -3,18 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
-// 초를 "HH:MM:SS" 형식으로 변환하는 헬퍼 함수
 function formatTime(totalSeconds) {
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = Math.floor(totalSeconds % 60);
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-}
-
-// 이메일에서 사용자 이름 부분(@ 앞)만 추출하는 헬퍼 함수
-function getEmailUsername(email) {
-    if (!email) return '...';
-    return email.split('@')[0];
 }
 
 function RankingPage() {
@@ -43,7 +36,6 @@ function RankingPage() {
         fetchRanking();
     }, []);
 
-    // 랭킹 아이템 렌더링
     const renderRanking = () => {
         if (loading) {
             return <p>랭킹을 불러오는 중...</p>;
@@ -66,11 +58,13 @@ function RankingPage() {
                             {index + 1}
                         </span>
                         <span className="rank-name">
-                            {/* [수정] API에서 받아온 user_name을 사용합니다. */}
                             {user.user_name || user.user_email.split('@')[0]}
                         </span>
+                        <span className="rank-email">
+                            {user.user_email}
+                        </span>
                         <span className="rank-time">
-                            {formatTime(user.total_study_seconds)}
+                            {formatTime(user.daily_study_seconds)}
                         </span>
                     </li>
                 ))}

@@ -50,27 +50,37 @@ class AIEngine:
         self.drowsy_count, self.phone_count, self.away_count, self.lying_down_count = 0, 0, 0, 0
         self.drowsy_event_counted, self.phone_event_counted, self.away_event_counted, self.lying_down_event_counted = False, False, False, False
 
-        self.total_study_time = 0.0
+        self.current_daily_study_time = 0.0
         self.study_session_start_time = None
         self.is_timer_running = False
 
-    def load_user_stats(self, stats_data: dict):
-        if not stats_data:
+        self.session_start_daily_stats = {}
+        
+    def load_user_stats(self, daily_stats_data: dict):
+        if not daily_stats_data:
             print("AI Engine: No existing stats data. Starting fresh.")
-            stats_data = {}
+            daily_stats_data = {}
             
-        self.total_study_time = stats_data.get("total_study_seconds", 0.0)
-        self.drowsy_count = stats_data.get("drowsy_count", 0)
-        self.phone_count = stats_data.get("phone_count", 0)
-        self.away_count = stats_data.get("away_count", 0)
-        self.lying_down_count = stats_data.get("lying_down_count", 0)
+        self.current_daily_study_time = daily_stats_data.get("daily_study_seconds", 0.0) 
+        self.drowsy_count = daily_stats_data.get("daily_drowsy_count", 0)
+        self.phone_count = daily_stats_data.get("daily_phone_count", 0)
+        self.away_count = daily_stats_data.get("daily_away_count", 0)
+        self.lying_down_count = daily_stats_data.get("daily_lying_down_count", 0)
 
-        print(f"AI Engine: Stats loaded. Total study time: {self.total_study_time}s")
+        print(f"AI Engine: Daily stats loaded. Today's study time starting from: {self.current_daily_study_time}s")
+        
+        self.session_start_daily_stats = {
+            "study_seconds": self.current_daily_study_time,
+            "drowsy_count": self.drowsy_count,
+            "phone_count": self.phone_count,
+            "away_count": self.away_count,
+            "lying_down_count": self.lying_down_count
+        }
 
         self.drowsy_event_counted, self.phone_event_counted, self.away_event_counted, self.lying_down_event_counted = False, False, False, False
+        self.current_status = "Initializing"
         self.study_session_start_time = None
         self.is_timer_running = False
-        self.current_status = "Initializing"
         self.is_studying = False
         self.is_drowsy = False
         self.is_phone_visible = False
@@ -90,18 +100,28 @@ class AIEngine:
     def commit_running_time(self):
         if self.is_timer_running and self.study_session_start_time:
             elapsed = time.time() - self.study_session_start_time
-            self.total_study_time += elapsed
+            self.current_daily_study_time += elapsed
             self.study_session_start_time = time.time()
 
-    def get_user_stats_for_db(self) -> dict:
-        return {
-            "total_study_seconds": self.total_study_time,
-            "drowsy_count": self.drowsy_count,
-            "phone_count": self.phone_count,
-            "away_count": self.away_count,
-            "lying_down_count": self.lying_down_count,
+    def get_final_stats(self) -> (dict, dict):  # type: ignore
+        final_daily_stats = {
+            "daily_study_seconds": self.current_daily_study_time, 
+            "daily_drowsy_count": self.drowsy_count,
+            "daily_phone_count": self.phone_count,
+            "daily_away_count": self.away_count,
+            "daily_lying_down_count": self.lying_down_count,
             "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
         }
+
+        session_delta_stats = {
+            "study_seconds": self.current_daily_study_time - self.session_start_daily_stats.get("daily_study_seconds", 0.0),
+            "drowsy_count": self.drowsy_count - self.session_start_daily_stats.get("daily_drowsy_count", 0),
+            "phone_count": self.phone_count - self.session_start_daily_stats.get("daily_phone_count", 0),
+            "away_count": self.away_count - self.session_start_daily_stats.get("daily_away_count", 0),
+            "lying_down_count": self.lying_down_count - self.session_start_daily_stats.get("daily_lying_down_count", 0),
+        }
+
+        return final_daily_stats, session_delta_stats
 
     def _euclidean_distance(self, p1, p2):
         return math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2)
@@ -205,7 +225,7 @@ class AIEngine:
             self.drowsy_event_counted = self.phone_event_counted = self.away_event_counted = self.lying_down_event_counted = False
         else:
             if self.is_timer_running:
-                self.total_study_time += current_time - self.study_session_start_time       # type: ignore
+                self.current_daily_study_time += current_time - self.study_session_start_time       # type: ignore
                 self.is_timer_running = False; self.study_session_start_time = None
 
             if self.is_drowsy:
@@ -233,7 +253,7 @@ class AIEngine:
     
     def _draw_overlay(self, frame):
         h, w, _ = frame.shape
-        display_time_sec = self.total_study_time
+        display_time_sec = self.current_daily_study_time
         if self.is_timer_running and self.study_session_start_time:
             display_time_sec += (time.time() - self.study_session_start_time)
         hours, rem = divmod(display_time_sec, 3600)
@@ -275,7 +295,7 @@ class AIEngine:
         return frame
 
     def get_state_for_main_py(self):
-        display_time_sec = self.total_study_time
+        display_time_sec = self.current_daily_study_time
         if self.is_timer_running and self.study_session_start_time:
             display_time_sec += (time.time() - self.study_session_start_time)
             
