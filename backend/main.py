@@ -89,20 +89,22 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
     try:
         if user_email:
             print(f"WebSocket client connected: {user_email}")
-            response = supabase.table("user_stats").select("*").eq("user_email", user_email).execute()
+            
+            today_date_gmt = time.strftime('%Y-%m-%d', time.gmtime())
+            response = supabase.table("daily_user_stats") \
+                             .select("*") \
+                             .eq("user_email", user_email) \
+                             .eq("date", today_date_gmt) \
+                             .execute()
+                             
             if not response.data: 
-                print(f"No stats row found for {user_email}. Creating one.")
-                supabase.table("user_stats").upsert(
-                    {
-                     "user_email": user_email,
-                     "user_name": user_name, 
-                     "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}, 
-                    on_conflict="user_email"
-                ).execute()
+                # 오늘 첫 접속: 빈 데이터로 엔진 로드
+                print(f"No daily stats found for {user_email} on {today_date_gmt}. Starting fresh.")
                 ai_engine_instance.load_user_stats({})
             else:
+                # 오늘 재접속: 기존 데이터로 엔진 로드
                 ai_engine_instance.load_user_stats(response.data[0]) # type: ignore
-                print(f"Stats loaded for user: {user_email}")
+                print(f"Daily stats loaded for user: {user_email} on {today_date_gmt}")
         else:
             print("WebSocket client connected: ANONYMOUS")
             ai_engine_instance.load_user_stats({})
@@ -132,23 +134,42 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
             })
             
             await asyncio.sleep(1.0)
+            
     except WebSocketDisconnect:
         if user_email:
             print(f"WebSocket client disconnected: {user_email}")
-            if ai_engine_instance:
+            if ai_engine_instance and supabase:
                 try:
                     ai_engine_instance.commit_running_time()
-                    final_stats = ai_engine_instance.get_user_stats_for_db()
-                    supabase.table("user_stats").update(final_stats).eq("user_email", user_email).execute()
-                    print(f"Stats saved to Supabase for user: {user_email}")
+                    final_daily_stats, session_delta_stats = ai_engine_instance.get_final_stats()
+                    today_date_gmt = time.strftime('%Y-%m-%d', time.gmtime())
+                    
+                    final_daily_stats["user_email"] = user_email
+                    final_daily_stats["date"] = today_date_gmt
+
+                    supabase.table("daily_user_stats").upsert(
+                        final_daily_stats, 
+                        on_conflict="user_email,date" 
+                    ).execute()
+                    print(f"Daily stats (total) saved to Supabase for user: {user_email}")
+
+                    if session_delta_stats["study_seconds"] > 0 :
+                        
+                        rpc_payload = {
+                            "p_user_email": user_email,
+                            "p_user_name": user_name,
+                            "p_study_seconds_delta": session_delta_stats["study_seconds"]
+                        }
+
+                        supabase.rpc("increment_user_stats", rpc_payload).execute()
+                        print(f"Total stats (delta) incremented for user: {user_email}")
+                    else:
+                        print(f"No changes in this session. Total stats not updated.")
+
                 except Exception as e:
                     print(f"Error saving stats to Supabase: {e}")
         else:
             print("Anonymous client disconnected. Stats not saved.")
-        
-    except Exception as e:
-        print(f"WebSocket error: {e}")
-        await websocket.close(code=1011)
         
 @app.get("/ranking/top10")
 async def get_top10_ranking():
@@ -156,9 +177,9 @@ async def get_top10_ranking():
     if supabase is None:
         raise HTTPException(status_code=503, detail="Supabase client not initialized")
     try:
-        response = supabase.table("user_stats") \
-                         .select("user_name, total_study_seconds") \
-                         .order("total_study_seconds", desc=True) \
+        response = supabase.table("daily_user_stats") \
+                         .select("user_email, daily_study_seconds") \
+                         .order("daily_study_seconds", desc=True) \
                          .limit(10) \
                          .execute()
         
