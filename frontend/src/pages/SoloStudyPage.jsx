@@ -102,7 +102,7 @@ function SoloStudyPage() {
     <div className="page-layout-sidebar">
       <header className="solo-header">
         <Link to="/" className="logo">
-          NODOZE
+          NO<span className="blue-doze">DOZE</span>
         </Link>
         <h1 className="header-title">
           AI 실시간 모니터링
