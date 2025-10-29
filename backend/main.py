@@ -90,6 +90,23 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
         if user_email:
             print(f"WebSocket client connected: {user_email}")
             
+            try:
+                supabase.table("user_stats").upsert(
+                    {
+                        "user_email": user_email, 
+                        "user_name": user_name,
+                        "total_study_seconds": 0, # 새 사용자의 기본값
+                        "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+                    },
+                    on_conflict="user_email", # 'user_email'이 고유 키(PK)여야 함
+                    ignore_duplicates=True  # 이미 존재하면 아무것도 안 함 (DO NOTHING)
+                ).execute()
+                print(f"Ensured user exists in user_stats: {user_email}")
+            except Exception as e:
+                print(f"CRITICAL Error ensuring user in user_stats: {e}")
+                await websocket.close(code=1011, reason="Failed to initialize user stats entry")
+                return
+            
             today_date_gmt = time.strftime('%Y-%m-%d', time.gmtime())
             response = supabase.table("daily_user_stats") \
                              .select("*") \
@@ -145,6 +162,7 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
                     today_date_gmt = time.strftime('%Y-%m-%d', time.gmtime())
                     
                     final_daily_stats["user_email"] = user_email
+                    final_daily_stats["user_name"] = user_name
                     final_daily_stats["date"] = today_date_gmt
 
                     supabase.table("daily_user_stats").upsert(
@@ -178,7 +196,7 @@ async def get_top10_ranking():
         raise HTTPException(status_code=503, detail="Supabase client not initialized")
     try:
         response = supabase.table("daily_user_stats") \
-                         .select("user_email, daily_study_seconds") \
+                         .select("user_name, user_email, daily_study_seconds") \
                          .order("daily_study_seconds", desc=True) \
                          .limit(10) \
                          .execute()

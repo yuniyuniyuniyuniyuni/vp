@@ -114,11 +114,7 @@ class AIEngine:
         }
 
         session_delta_stats = {
-            "study_seconds": self.current_daily_study_time - self.session_start_daily_stats.get("daily_study_seconds", 0.0),
-            "drowsy_count": self.drowsy_count - self.session_start_daily_stats.get("daily_drowsy_count", 0),
-            "phone_count": self.phone_count - self.session_start_daily_stats.get("daily_phone_count", 0),
-            "away_count": self.away_count - self.session_start_daily_stats.get("daily_away_count", 0),
-            "lying_down_count": self.lying_down_count - self.session_start_daily_stats.get("daily_lying_down_count", 0),
+            "study_seconds": self.current_daily_study_time - self.session_start_daily_stats.get("study_seconds", 0.0),
         }
 
         return final_daily_stats, session_delta_stats
