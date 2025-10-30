@@ -85,7 +85,7 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
 
     now_kst = datetime.now(kst_timezone)
     
-    if now_kst.hour < 15:
+    if now_kst.hour < 6:
         logical_date_obj = now_kst.date() - timedelta(days=1)
     else:
         logical_date_obj = now_kst.date()
@@ -106,11 +106,11 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
                     {
                         "user_email": user_email, 
                         "user_name": user_name,
-                        "total_study_seconds": 0, # 새 사용자의 기본값
+                        "total_study_seconds": 0, 
                         "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
                     },
-                    on_conflict="user_email", # 'user_email'이 고유 키(PK)여야 함
-                    ignore_duplicates=True  # 이미 존재하면 아무것도 안 함 (DO NOTHING)
+                    on_conflict="user_email",
+                    ignore_duplicates=True 
                 ).execute()
                 print(f"Ensured user exists in user_stats: {user_email}")
             except Exception as e:
@@ -146,19 +146,19 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
                  await asyncio.sleep(1.0)
                  continue
                  
-            stats = get_current_stats()
-            display_time_sec = stats["total_study_seconds"]
+            stats_data = get_current_stats()
+            display_time_sec = stats_data["total_study_seconds"]
             
             hours = int(display_time_sec // 3600)
             minutes = int((display_time_sec % 3600) // 60)
             seconds = int(display_time_sec % 60)
             timer_text = f"{hours:02}:{minutes:02}:{seconds:02}"
-            status_text = stats["current_status"]
+            status_text = stats_data["current_status"]
 
             await websocket.send_json({
                 "time": timer_text,
                 "status": status_text,
-                "counts": stats["counts"] 
+                "stats": stats_data["stats"] 
             })
             
             await asyncio.sleep(1.0)
@@ -168,7 +168,7 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
             print(f"WebSocket client disconnected: {user_email}")
             if ai_engine_instance and supabase:
                 try:
-                    ai_engine_instance.commit_running_time()
+                    ai_engine_instance.commit_all_running_timers()
                     final_daily_stats, session_delta_stats = ai_engine_instance.get_final_stats()
                     
                     final_daily_stats["user_email"] = user_email
@@ -181,7 +181,7 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
                     ).execute()
                     print(f"Daily stats (total) saved to Supabase for user: {user_email}")
 
-                    if session_delta_stats["study_seconds"] > 0 :
+                    if session_delta_stats["study_seconds"] > 0:
                         
                         rpc_payload = {
                             "p_user_email": user_email,
@@ -192,7 +192,7 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
                         supabase.rpc("increment_user_stats", rpc_payload).execute()
                         print(f"Total stats (delta) incremented for user: {user_email}")
                     else:
-                        print(f"No changes in this session. Total stats not updated.")
+                        print(f"No study time in this session. Total stats not updated.")
 
                 except Exception as e:
                     print(f"Error saving stats to Supabase: {e}")
