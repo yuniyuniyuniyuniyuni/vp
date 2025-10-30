@@ -4,6 +4,13 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom'; 
 import { supabase } from '../supabaseClient'; 
 
+const formatNonStudyTime = (seconds) => {
+  if (!seconds) seconds = 0;
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}분 ${secs}초`;
+};
+
 function SoloStudyPage() {
   const videoFeedUrl = "http://localhost:8000/video_feed";
 
@@ -13,7 +20,10 @@ function SoloStudyPage() {
     drowsy: 0,
     phone: 0,
     away: 0,
-    lying_down: 0 
+    lying_down: 0,
+    drowsy_seconds: 0,
+    phone_seconds: 0,
+    away_seconds: 0
   });
 
   const [userData, setUserData] = useState(null);
@@ -46,8 +56,8 @@ function SoloStudyPage() {
           const data = JSON.parse(event.data);
           if (data.time) setStudyTime(data.time);
           if (data.status) setCurrentStatus(data.status);
-          if (data.counts) {
-             setStats(prevStats => ({ ...prevStats, ...data.counts }));
+          if (data.stats) {
+             setStats(prevStats => ({ ...prevStats, ...data.stats }));
           }
         } catch (e) { console.error("Failed to parse WebSocket message", e); }
       };
@@ -186,14 +196,17 @@ function SoloStudyPage() {
               <div className="stats-grid">
                 <div className="stats-grid-item">
                   <p className="stat-value">{stats.away} <span>회</span></p>
+                  <p className="stat-label-time">{formatNonStudyTime(stats.away_seconds)}</p>
                   <p className="stat-label">자리 비움</p>
                 </div>
                 <div className="stats-grid-item">
                   <p className="stat-value">{stats.phone} <span>회</span></p>
+                  <p className="stat-label-time">{formatNonStudyTime(stats.phone_seconds)}</p>
                   <p className="stat-label">휴대폰/숙임</p>
                 </div>
                 <div className="stats-grid-item">
                   <p className="stat-value">{stats.drowsy} <span>회</span></p>
+                  <p className="stat-label-time">{formatNonStudyTime(stats.drowsy_seconds)}</p>
                   <p className="stat-label">졸음 감지</p>
                 </div>
               </div>

@@ -53,6 +53,14 @@ class AIEngine:
         self.current_daily_study_time = 0.0
         self.study_session_start_time = None
         self.is_timer_running = False
+        
+        self.drowsy_seconds = 0.0
+        self.phone_seconds = 0.0
+        self.away_seconds = 0.0
+        self.lying_down_seconds = 0.0
+
+        self.current_non_study_state = None 
+        self.non_study_start_time = None
 
         self.session_start_daily_stats = {}
         
@@ -66,6 +74,11 @@ class AIEngine:
         self.phone_count = daily_stats_data.get("daily_phone_count", 0)
         self.away_count = daily_stats_data.get("daily_away_count", 0)
         self.lying_down_count = daily_stats_data.get("daily_lying_down_count", 0)
+        
+        self.drowsy_seconds = daily_stats_data.get("daily_drowsy_seconds", 0.0)
+        self.phone_seconds = daily_stats_data.get("daily_phone_seconds", 0.0)
+        self.away_seconds = daily_stats_data.get("daily_away_seconds", 0.0)
+        self.lying_down_seconds = daily_stats_data.get("daily_lying_down_seconds", 0.0)
 
         print(f"AI Engine: Daily stats loaded. Today's study time starting from: {self.current_daily_study_time}s")
         
@@ -74,7 +87,11 @@ class AIEngine:
             "drowsy_count": self.drowsy_count,
             "phone_count": self.phone_count,
             "away_count": self.away_count,
-            "lying_down_count": self.lying_down_count
+            "lying_down_count": self.lying_down_count,
+            "daily_drowsy_seconds": self.drowsy_seconds,
+            "daily_phone_seconds": self.phone_seconds,
+            "daily_away_seconds": self.away_seconds,
+            "daily_lying_down_seconds": self.lying_down_seconds
         }
 
         self.drowsy_event_counted, self.phone_event_counted, self.away_event_counted, self.lying_down_event_counted = False, False, False, False
@@ -96,12 +113,22 @@ class AIEngine:
         self.initial_shoulder = None
         self.is_calibrating = True
         self.calibration_frames = []
+        self.current_non_study_state = None # [추가]
+        self.non_study_start_time = None
+        
 
-    def commit_running_time(self):
+    def commit_all_running_timers(self):
+        current_time = time.time()
+        
+        # 1. 공부 타이머 확정
         if self.is_timer_running and self.study_session_start_time:
-            elapsed = time.time() - self.study_session_start_time
+            elapsed = current_time - self.study_session_start_time
             self.current_daily_study_time += elapsed
-            self.study_session_start_time = time.time()
+            self.study_session_start_time = current_time 
+
+        # 2. 비-공부 타이머 확정
+        if self.current_non_study_state is not None and self.non_study_start_time is not None:
+            self._stop_non_study_timer(current_time)
 
     def get_final_stats(self) -> (dict, dict):  # type: ignore
         final_daily_stats = {
@@ -110,7 +137,11 @@ class AIEngine:
             "daily_phone_count": self.phone_count,
             "daily_away_count": self.away_count,
             "daily_lying_down_count": self.lying_down_count,
-            "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+            "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            "daily_drowsy_seconds": self.drowsy_seconds,
+            "daily_phone_seconds": self.phone_seconds,
+            "daily_away_seconds": self.away_seconds,
+            "daily_lying_down_seconds": self.lying_down_seconds
         }
 
         session_delta_stats = {
@@ -215,37 +246,86 @@ class AIEngine:
         self.is_studying = self.is_person_present and not self.is_using_phone and not self.is_drowsy and not self.is_lying_down
         
         current_time = time.time()
+        
+        # 1. '공부' 상태 처리
         if self.is_studying:
             self.current_status = "Studying"
-            if not self.is_timer_running: self.study_session_start_time = current_time; self.is_timer_running = True
-            self.drowsy_event_counted = self.phone_event_counted = self.away_event_counted = self.lying_down_event_counted = False
+            if not self.is_timer_running: 
+                self.study_session_start_time = current_time
+                self.is_timer_running = True
+            
+            # '비-공부' 상태였다면, 해당 타이머를 중지하고 시간 누적
+            if self.current_non_study_state is not None:
+                self._stop_non_study_timer(current_time)
+                
+        # 2. '비-공부' 상태 처리
         else:
+            # '공부' 상태였다면, 공부 타이머 중지
             if self.is_timer_running:
                 self.current_daily_study_time += current_time - self.study_session_start_time       # type: ignore
-                self.is_timer_running = False; self.study_session_start_time = None
+                self.is_timer_running = False
+                self.study_session_start_time = None
 
+            # '비-공부' 상태 정의 (우선순위 순서대로)
+            new_state = None
             if self.is_drowsy:
+                new_state = "drowsy"
                 self.current_status = "Drowsy"
-                if not self.drowsy_event_counted: self.drowsy_count += 1; self.drowsy_event_counted = True
             elif self.is_using_phone:
+                new_state = "phone"
                 self.current_status = "Using Phone"
-                if not self.phone_event_counted: self.phone_count += 1; self.phone_event_counted = True
             elif not self.is_person_present:
+                new_state = "away"
                 self.current_status = "Away"
-                if not self.away_event_counted: self.away_count += 1; self.away_event_counted = True
             elif self.is_lying_down:
+                new_state = "lying_down"
                 self.current_status = "Lying Down"
-                if not self.lying_down_event_counted: self.lying_down_count += 1; self.lying_down_event_counted = True
             else:
-                if self.is_calibrating:
-                    self.current_status = "Calibrating"
-                else:
-                    self.current_status = "Idle"
+                new_state = "idle" # 캘리브레이션 중이거나, 다른 상태가 아닌 경우
+                self.current_status = "Calibrating" if self.is_calibrating else "Idle"
 
-            if not self.is_drowsy: self.drowsy_event_counted = False
-            if not self.is_using_phone: self.phone_event_counted = False
-            if self.is_person_present: self.away_event_counted = False
-            if not self.is_lying_down: self.lying_down_event_counted = False
+            # 3. 상태 머신: 상태가 변경되었는지 확인
+            if new_state != self.current_non_study_state:
+                # 이전 상태가 있었다면, 타이머 중지 및 시간 누적
+                if self.current_non_study_state is not None:
+                    self._stop_non_study_timer(current_time)
+                
+                # 새 상태의 타이머 시작
+                self.current_non_study_state = new_state
+                if new_state != "idle": # 'Idle' 상태는 시간 측정 안 함
+                    self.non_study_start_time = current_time
+
+                    # [참고] 횟수(count)를 집계하고 싶다면 이 시점에 1 증가
+                    if new_state == "drowsy" and not self.drowsy_event_counted: 
+                        self.drowsy_count += 1; self.drowsy_event_counted = True
+                    if new_state == "phone" and not self.phone_event_counted: 
+                        self.phone_count += 1; self.phone_event_counted = True
+                    if new_state == "away" and not self.away_event_counted: 
+                        self.away_count += 1; self.away_event_counted = True
+                    if new_state == "lying_down" and not self.lying_down_event_counted: 
+                        self.lying_down_count += 1; self.lying_down_event_counted = True
+
+        # '공부' 상태로 돌아오면 '횟수' 카운트 리셋
+        if self.is_studying:
+            self.drowsy_event_counted = self.phone_event_counted = self.away_event_counted = self.lying_down_event_counted = False
+    
+    def _stop_non_study_timer(self, end_time):
+        if self.non_study_start_time is None:
+            return # 타이머가 실행 중이지 않았음
+
+        elapsed = end_time - self.non_study_start_time
+        
+        if self.current_non_study_state == "drowsy":
+            self.drowsy_seconds += elapsed
+        elif self.current_non_study_state == "phone":
+            self.phone_seconds += elapsed
+        elif self.current_non_study_state == "away":
+            self.away_seconds += elapsed
+        elif self.current_non_study_state == "lying_down":
+            self.lying_down_seconds += elapsed
+            
+        self.non_study_start_time = None
+        self.current_non_study_state = None
     
     def _draw_overlay(self, frame):
         h, w, _ = frame.shape
@@ -300,11 +380,14 @@ class AIEngine:
             "study_session_start_time": self.study_session_start_time,
             "is_timer_running": self.is_timer_running,
             "current_status": self.current_status,
-            "counts": {
+            "stats": {
                 "drowsy": self.drowsy_count,
                 "phone": self.phone_count,
                 "away": self.away_count,
-                "lying_down": self.lying_down_count 
+                "lying_down": self.lying_down_count,
+                "drowsy_seconds": self.drowsy_seconds,
+                "phone_seconds": self.phone_seconds,
+                "away_seconds": self.away_seconds
             }
         }
         
@@ -338,7 +421,6 @@ def generate_frames():
             yield(b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + 
                   bytearray(encodedImage) + b'\r\n')
         return
-
     cap = cv2.VideoCapture(0)
 
     if not cap.isOpened():
