@@ -1,4 +1,5 @@
 // src/pages/SoloStudyPage.jsx
+
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom'; 
 import { supabase } from '../supabaseClient'; 
@@ -17,6 +18,9 @@ function SoloStudyPage() {
 
   const [userData, setUserData] = useState(null);
   const navigate = useNavigate(); 
+  const [activeTab, setActiveTab] = useState('stats'); 
+  const [todos, setTodos] = useState([]);
+  const [newTodoText, setNewTodoText] = useState("");
 
   useEffect(() => {
     let ws;
@@ -96,6 +100,19 @@ function SoloStudyPage() {
     navigate('/select');
   };
 
+  const handleAddNewTodo = (e) => {
+    e.preventDefault();
+    const text = newTodoText.trim();
+    if (text) {
+      setTodos(prevTodos => [...prevTodos, { id: Date.now(), text: text }]);
+      setNewTodoText("");
+    }
+  };
+
+  const handleRemoveTodo = (idToRemove) => {
+    setTodos(prevTodos => prevTodos.filter(todo => todo.id !== idToRemove));
+  };
+
   const statusClassName = `status-${currentStatus.replace(/\s+/g, '')}`;
 
   return (
@@ -150,22 +167,67 @@ function SoloStudyPage() {
           </div>
 
           <div className="daily-stats-card">
-            <h2 className="card-title">일일 통계</h2>
-            
-            <div className="stats-grid">
-              <div className="stats-grid-item">
-                <p className="stat-value">{stats.away} <span>회</span></p>
-                <p className="stat-label">자리 비움</p>
-              </div>
-              <div className="stats-grid-item">
-                <p className="stat-value">{stats.phone} <span>회</span></p>
-                <p className="stat-label">휴대폰/숙임</p>
-              </div>
-              <div className="stats-grid-item">
-                <p className="stat-value">{stats.drowsy} <span>회</span></p>
-                <p className="stat-label">졸음 감지</p>
-              </div>
+            <div className="tabs">
+              <button
+                className={`tab-btn ${activeTab === 'stats' ? 'active' : ''}`}
+                onClick={() => setActiveTab('stats')}
+              >
+                일일 통계
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'todo' ? 'active' : ''}`}
+                onClick={() => setActiveTab('todo')}
+              >
+                To-Do List
+              </button>
             </div>
+
+            {activeTab === 'stats' ? (
+              <div className="stats-grid">
+                <div className="stats-grid-item">
+                  <p className="stat-value">{stats.away} <span>회</span></p>
+                  <p className="stat-label">자리 비움</p>
+                </div>
+                <div className="stats-grid-item">
+                  <p className="stat-value">{stats.phone} <span>회</span></p>
+                  <p className="stat-label">휴대폰/숙임</p>
+                </div>
+                <div className="stats-grid-item">
+                  <p className="stat-value">{stats.drowsy} <span>회</span></p>
+                  <p className="stat-label">졸음 감지</p>
+                </div>
+              </div>
+            ) : (
+              <div className="todo-list-container">
+                <form onSubmit={handleAddNewTodo} className="todo-form">
+                  <input
+                    type="text"
+                    value={newTodoText}
+                    onChange={(e) => setNewTodoText(e.target.value)}
+                    placeholder="오늘의 할 일"
+                  />
+                  <button type="submit">추가</button>
+                </form>
+                <ul className="todo-list">
+                  {todos.length === 0 ? (
+                    <li className="todo-empty">할 일이 없습니다.</li>
+                  ) : (
+                    todos.map(todo => (
+                      <li key={todo.id} className="todo-item">
+                        <button 
+                          onClick={() => handleRemoveTodo(todo.id)} 
+                          className="todo-check-btn"
+                          title="완료 (제거)"
+                        >
+                          ✔️
+                        </button>
+                        <span>{todo.text}</span>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </div>
+            )}
           </div>
         </main>
       </div>
