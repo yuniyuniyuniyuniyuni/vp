@@ -18,7 +18,6 @@ function RankingPage() {
     useEffect(() => {
         const fetchRanking = async () => {
             try {
-                // 1. 백엔드에서 랭킹 데이터 호출
                 const response = await fetch("http://localhost:8000/ranking/top10");
                 if (!response.ok) {
                     throw new Error("서버에서 랭킹을 불러오지 못했습니다.");
@@ -47,7 +46,6 @@ function RankingPage() {
             return <p>아직 랭킹 데이터가 없습니다.</p>;
         }
         
-        // CSS 스타일을 위한 랭킹 1, 2, 3위 클래스
         const rankClasses = ['rank-1', 'rank-2', 'rank-3'];
 
         return (
@@ -59,9 +57,6 @@ function RankingPage() {
                         </span>
                         <span className="rank-name">
                             {user.user_name || user.user_email.split('@')[0]}
-                        </span>
-                        <span className="rank-email">
-                            {user.user_email}
                         </span>
                         <span className="rank-time">
                             {formatTime(user.daily_study_seconds)}
@@ -82,7 +77,6 @@ function RankingPage() {
             </header>
             <main className="select-study-main container">
                 <h1 className="welcome-title">🏆 Top 10 랭킹</h1>
-                <p className="welcome-subtitle">가장 많은 시간을 공부한 10명입니다.</p>
                 
                 <div className="ranking-card">
                     {renderRanking()}

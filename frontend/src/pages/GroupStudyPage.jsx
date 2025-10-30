@@ -1,7 +1,7 @@
 // src/pages/GroupStudyPage.jsx
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 
 const getGroupGridClasses = (count) => {
@@ -50,7 +50,8 @@ function GroupStudyPage() {
     const [stats, setStats] = useState({ drowsy: 0, phone: 0, away: 0, lying_down: 0 });
     const [activeStatsTab, setActiveStatsTab] = useState('tab-personal-stats');
     const [mainViewTab, setMainViewTab] = useState('group');
-    
+    const { id } = useParams();
+    const [groupName, setGroupName] = useState("그룹 로딩 중...");
     const [userData, setUserData] = useState(null); 
     const navigate = useNavigate(); 
     const ws = useRef(null);
@@ -100,6 +101,31 @@ function GroupStudyPage() {
             }
         };
     }, [navigate]);
+
+    useEffect(() => {
+        const fetchGroupData = async () => {
+            if (!id) {
+                console.error("No group ID found in URL");
+                setGroupName("유효하지 않은 그룹");
+                return;
+            }
+
+            const { data, error } = await supabase
+                .from('groups')
+                .select('name') 
+                .eq('id', id) 
+                .single();
+
+            if (error) {
+                console.error("Error fetching group data:", error);
+                setGroupName("그룹 정보 로드 실패");
+            } else if (data) {
+                setGroupName(data.name);
+            }
+        };
+
+        fetchGroupData();
+    }, [id]);
 
     useEffect(() => {
         const fetchUserData = async () => {
@@ -179,7 +205,7 @@ function GroupStudyPage() {
             </aside>
             <main className="group-main">
                 <header className="group-main-header">
-                    <h1>그룹 스터디: 서울대 모여라</h1>
+                    <h1>그룹 스터디: {groupName}</h1>
                     
                     <div className="view-tabs">
                         <button

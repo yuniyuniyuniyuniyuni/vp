@@ -97,8 +97,55 @@ img {
 .btn-danger:hover {
     background-color: #b91c1c;
 }
+.tab-btn {
+    background-color: #e5e7eb;
+    color: #374151;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border-radius: 0.375rem;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    margin-right: 0.25rem;
+}
 
+.tab-btn.active {
+    background-color: #4285F4;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    color: #ffffff;
+}
 
+.todo-form input {
+    padding: 0.35rem 1rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.2rem;
+    font-size: 1rem;
+    box-sizing: border-box;
+    margin: 0.7rem 1rem 1rem 0;
+    text-align: center;
+}
+
+.todo-form button {
+    background-color: #4285F4;
+    border-radius: 0.375rem;
+    color: #fff;
+    padding: 0.35rem 1rem;
+    font-size: 1rem;
+}
+.todo-item {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #e5e7eb;
+}
+.todo-item button {
+    padding-right: 1rem;
+    display: flex;
+    text-align: center;
+    font-size: 1.25rem;
+}
 
 .homepage-header {
     padding-top: 1rem;
@@ -1350,6 +1397,7 @@ img {
   font-size: 1.1rem;
   font-weight: 600;
   color: #333;
+  padding-right: 100px;
 }
 
 

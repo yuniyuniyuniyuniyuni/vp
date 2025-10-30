@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import asyncio 
 import time
+from datetime import datetime, timezone, timedelta
 from jose import jwt, JWTError 
 from supabase import create_client, Client # [추가]
 import os
@@ -80,6 +81,16 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
             await websocket.close(code=1008, reason="Invalid token")
             return
     
+    kst_timezone = timezone(timedelta(hours=9))
+
+    now_kst = datetime.now(kst_timezone)
+    
+    if now_kst.hour < 15:
+        logical_date_obj = now_kst.date() - timedelta(days=1)
+    else:
+        logical_date_obj = now_kst.date()
+
+    study_date_key = logical_date_obj.isoformat()
     await websocket.accept()
 
     if ai_engine_instance is None:
@@ -111,17 +122,17 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
             response = supabase.table("daily_user_stats") \
                              .select("*") \
                              .eq("user_email", user_email) \
-                             .eq("date", today_date_gmt) \
+                             .eq("date", study_date_key) \
                              .execute()
                              
             if not response.data: 
                 # 오늘 첫 접속: 빈 데이터로 엔진 로드
-                print(f"No daily stats found for {user_email} on {today_date_gmt}. Starting fresh.")
+                print(f"No daily stats found for {user_email} on {study_date_key}. Starting fresh.")
                 ai_engine_instance.load_user_stats({})
             else:
                 # 오늘 재접속: 기존 데이터로 엔진 로드
                 ai_engine_instance.load_user_stats(response.data[0]) # type: ignore
-                print(f"Daily stats loaded for user: {user_email} on {today_date_gmt}")
+                print(f"Daily stats loaded for user: {user_email} on {study_date_key}")
         else:
             print("WebSocket client connected: ANONYMOUS")
             ai_engine_instance.load_user_stats({})
@@ -159,11 +170,10 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
                 try:
                     ai_engine_instance.commit_running_time()
                     final_daily_stats, session_delta_stats = ai_engine_instance.get_final_stats()
-                    today_date_gmt = time.strftime('%Y-%m-%d', time.gmtime())
                     
                     final_daily_stats["user_email"] = user_email
                     final_daily_stats["user_name"] = user_name
-                    final_daily_stats["date"] = today_date_gmt
+                    final_daily_stats["date"] = study_date_key
 
                     supabase.table("daily_user_stats").upsert(
                         final_daily_stats, 
