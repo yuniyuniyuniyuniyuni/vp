@@ -107,7 +107,7 @@ function SoloStudyPage() {
   };
 
   const handleGoBack = () => {
-    navigate('/select');
+    navigate('/');
   };
 
   const handleAddNewTodo = (e) => {
