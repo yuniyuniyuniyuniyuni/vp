@@ -125,12 +125,10 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
                              .eq("date", study_date_key) \
                              .execute()
                              
-            if not response.data: 
-                # 오늘 첫 접속: 빈 데이터로 엔진 로드
+            if not response.data:
                 print(f"No daily stats found for {user_email} on {study_date_key}. Starting fresh.")
                 ai_engine_instance.load_user_stats({})
             else:
-                # 오늘 재접속: 기존 데이터로 엔진 로드
                 ai_engine_instance.load_user_stats(response.data[0]) # type: ignore
                 print(f"Daily stats loaded for user: {user_email} on {study_date_key}")
         else:
@@ -204,15 +202,26 @@ async def get_top10_ranking():
 
     if supabase is None:
         raise HTTPException(status_code=503, detail="Supabase client not initialized")
+    kst_timezone = timezone(timedelta(hours=9))
+    now_kst = datetime.now(kst_timezone)
+    
+    if now_kst.hour < 6:
+        logical_date_obj = now_kst.date() - timedelta(days=1)
+    else:
+        logical_date_obj = now_kst.date()
+
+    study_date_key = logical_date_obj.isoformat()
+    print(f"Fetching ranking for date: {study_date_key}")
     try:
         response = supabase.table("daily_user_stats") \
                          .select("user_name, user_email, daily_study_seconds") \
+                         .eq("date", study_date_key) \
                          .order("daily_study_seconds", desc=True) \
                          .limit(10) \
                          .execute()
         
         if not response.data:
-            return [] 
+            return []
         return response.data
     
     except Exception as e:
