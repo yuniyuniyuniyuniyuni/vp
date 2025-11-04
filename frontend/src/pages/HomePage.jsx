@@ -1,35 +1,67 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react'; 
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 
 function HomePage() {
+  const [userData, setUserData] = useState(null); 
+  const navigate = useNavigate();
+  useEffect(() => {
+    const fetchUserData = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserData({
+          name: user.user_metadata.name || user.email.split('@')[0],
+          picture: user.user_metadata.picture,
+        });
+      }
+    };
+    fetchUserData();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          const user = session.user;
+          setUserData({
+            name: user.user_metadata.name || user.email.split('@')[0],
+            picture: user.user_metadata.picture,
+          });
+        } else if (event === 'SIGNED_OUT') {
+          setUserData(null);
+        }
+      }
+    );
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, []);
 
   const handleGoogleLogin = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        redirectTo: 'http://localhost:5173/select'
-      }
     });
     if (error) {
       console.error("Error logging in with Google:", error.message);
     }
   };
-  const navigate = useNavigate();
-  const handleStartStudy = async () => {
+
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error("Error logging out:", error.message);
+    }
+  };
+
+    const handleStartStudy = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
-      if (user) {
-        navigate('/select');
-      } else {
-        navigate('/study');
-      }
+      navigate('/study');
     } catch (err) {
       console.error('Error checking auth status:', err);
       await handleGoogleLogin();
     }
   };
+
   return (
     <>
       <header className="homepage-header">
@@ -37,9 +69,31 @@ function HomePage() {
           <div className="logo-lg">
             NO<span className="blue-doze">DOZE</span>
           </div>
-          <button onClick={handleGoogleLogin} className="btn btn-primary-sm">
-            Google 계정으로 시작하기
-          </button>
+          {userData ? (
+            <div className="header-user-info" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {userData.picture && (
+                <img 
+                  src={userData.picture} 
+                  alt="프로필" 
+                  style={{ width: '36px', height: '36px', borderRadius: '50%' }} 
+                />
+              )}
+              <span style={{ color: '#000', fontSize: '16px', fontWeight: '500' }}>
+                {userData.name}님
+              </span>
+              <button 
+                onClick={handleLogout} 
+                className="btn btn-primary-sm"
+                style={{ background: '#4A5568', borderColor: '#4A5568' }} 
+              >
+                로그아웃
+              </button>
+            </div>
+          ) : (
+            <button onClick={handleGoogleLogin} className="btn btn-primary-sm">
+              Google 계정으로 시작하기
+            </button>
+          )}
         </div>
       </header>
 
@@ -87,17 +141,26 @@ function HomePage() {
               </div>
           </div>
       </section>
+      
       <section className="cta-section">
           <div className="container">
             <h2 className="section-title">더 이상의 의지력 탓은 그만.</h2>
             <p className="section-subtitle">
                 NODOZE의 AI 기술로 당신의 잠재된 집중력을 끌어내 보세요.
             </p>
-            <button onClick={handleGoogleLogin} className="btn btn-primary">
-                Google 계정으로 시작하기
-            </button>
+            
+            {userData ? (
+              <button onClick={handleStartStudy} className="btn btn-primary">
+                  지금 바로 순공시간 측정하기
+              </button>
+            ) : (
+              <button onClick={handleGoogleLogin} className="btn btn-primary">
+                  Google 계정으로 시작하기
+              </button>
+            )}
           </div>
       </section>
+
       <footer className="homepage-footer">
           <div className="container">
               <div className="footer-logo">

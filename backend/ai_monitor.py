@@ -188,7 +188,10 @@ class AIEngine:
             self.person_not_detected_start_time = None; self.is_person_present = True
 
     def _analyze_face_and_head(self, rgb_frame):
+        current_time = time.time() 
+        
         mesh_results = self.mp_face_mesh.process(rgb_frame)
+        
         if mesh_results.multi_face_landmarks:
             landmarks = mesh_results.multi_face_landmarks[0].landmark
             
@@ -207,14 +210,22 @@ class AIEngine:
             nose_chin_dist = abs(nose_tip.y - chin.y)
             if face_width > 0: self.head_tilt_ratio = nose_chin_dist / face_width
             
-            current_time = time.time()
-            if self.head_tilt_ratio < self.HEAD_TILT_RATIO_THRESHOLD and self.head_tilt_ratio > 0:
-                if self.head_down_start_time is None: self.head_down_start_time = current_time
-                elif current_time - self.head_down_start_time > self.HEAD_DOWN_SECONDS: self.is_looking_down = True
+            if self.head_tilt_ratio < self.HEAD_TILT_RATIO_THRESHOLD and self.head_tilt_ratio >= 0:
+                if self.head_down_start_time is None: 
+                    self.head_down_start_time = current_time
+                elif current_time - self.head_down_start_time > self.HEAD_DOWN_SECONDS: 
+                    self.is_looking_down = True
             else:
                 self.head_down_start_time = None; self.is_looking_down = False
+        
         else:
-            self.drowsy_counter = 0; self.is_drowsy = False; self.is_looking_down = False
+            self.drowsy_counter = 0
+            if self.head_down_start_time is not None:
+                if current_time - self.head_down_start_time > self.HEAD_DOWN_SECONDS:
+                    self.is_looking_down = True
+            else:
+                self.is_looking_down = False
+                
             self.head_tilt_ratio = 0
 
     def _calibrate_posture(self, pose_results):
@@ -246,27 +257,21 @@ class AIEngine:
         self.is_studying = self.is_person_present and not self.is_using_phone and not self.is_drowsy and not self.is_lying_down
         
         current_time = time.time()
-        
-        # 1. '공부' 상태 처리
         if self.is_studying:
             self.current_status = "Studying"
             if not self.is_timer_running: 
                 self.study_session_start_time = current_time
                 self.is_timer_running = True
             
-            # '비-공부' 상태였다면, 해당 타이머를 중지하고 시간 누적
             if self.current_non_study_state is not None:
                 self._stop_non_study_timer(current_time)
                 
-        # 2. '비-공부' 상태 처리
         else:
-            # '공부' 상태였다면, 공부 타이머 중지
             if self.is_timer_running:
                 self.current_daily_study_time += current_time - self.study_session_start_time       # type: ignore
                 self.is_timer_running = False
                 self.study_session_start_time = None
 
-            # '비-공부' 상태 정의 (우선순위 순서대로)
             new_state = None
             if self.is_drowsy:
                 new_state = "drowsy"
@@ -281,21 +286,17 @@ class AIEngine:
                 new_state = "lying_down"
                 self.current_status = "Lying Down"
             else:
-                new_state = "idle" # 캘리브레이션 중이거나, 다른 상태가 아닌 경우
+                new_state = "idle" 
                 self.current_status = "Calibrating" if self.is_calibrating else "Idle"
 
-            # 3. 상태 머신: 상태가 변경되었는지 확인
             if new_state != self.current_non_study_state:
-                # 이전 상태가 있었다면, 타이머 중지 및 시간 누적
                 if self.current_non_study_state is not None:
                     self._stop_non_study_timer(current_time)
                 
-                # 새 상태의 타이머 시작
                 self.current_non_study_state = new_state
-                if new_state != "idle": # 'Idle' 상태는 시간 측정 안 함
+                if new_state != "idle": 
                     self.non_study_start_time = current_time
 
-                    # [참고] 횟수(count)를 집계하고 싶다면 이 시점에 1 증가
                     if new_state == "drowsy" and not self.drowsy_event_counted: 
                         self.drowsy_count += 1; self.drowsy_event_counted = True
                     if new_state == "phone" and not self.phone_event_counted: 
@@ -305,13 +306,12 @@ class AIEngine:
                     if new_state == "lying_down" and not self.lying_down_event_counted: 
                         self.lying_down_count += 1; self.lying_down_event_counted = True
 
-        # '공부' 상태로 돌아오면 '횟수' 카운트 리셋
         if self.is_studying:
             self.drowsy_event_counted = self.phone_event_counted = self.away_event_counted = self.lying_down_event_counted = False
     
     def _stop_non_study_timer(self, end_time):
         if self.non_study_start_time is None:
-            return # 타이머가 실행 중이지 않았음
+            return 
 
         elapsed = end_time - self.non_study_start_time
         
@@ -401,7 +401,6 @@ def get_current_stats():
     if ai_engine_instance:
         return ai_engine_instance.get_state_for_main_py()
     else:
-        # 엔진 로드 실패 시 기본값 반환
         return {
             "total_study_seconds": 0.0,
             "study_session_start_time": None,
