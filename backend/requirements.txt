@@ -1,0 +1,23 @@
+# Core frameworks
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Computer Vision & AI
+opencv-python==4.10.0.84
+mediapipe
+ultralytics
+
+# Deep Learning
+tensorflow==2.15.0
+tf-keras
+protobuf==3.20.3
+deepface
+
+# Data processing
+numpy==1.26.4
+
+# Authentication & Database
+python-jose[cryptography]
+supabase
+python-dotenv

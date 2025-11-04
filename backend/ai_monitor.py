@@ -1,11 +1,14 @@
-# backend/ai_monitor.py
-
 import cv2
 import mediapipe as mp
 import math
 import time
 from ultralytics import YOLO                    # type: ignore
 import numpy as np
+from deepface import DeepFace
+import os
+import pickle
+import threading
+from queue import Queue
 
 class AIEngine:
     def __init__(self):
@@ -28,6 +31,26 @@ class AIEngine:
         self.LEFT_EYE_INDICES = [362, 385, 387, 263, 373, 380]
         self.RIGHT_EYE_INDICES = [33, 160, 158, 133, 153, 144]
         self.PHONE_CLASS_ID = 67; self.PERSON_CLASS_ID = 0
+
+        # 얼굴 인식 - 벡터(임베딩) 방식으로 저장
+        self.face_embedding_path = "user_face_embedding.pkl"
+        self.registered_face_embedding = None  # 512차원 벡터
+        self.is_face_registered = False
+        self.face_verification_interval = 30  # 30프레임마다 1번 검증
+        self.face_distance_threshold = 0.4  # 코사인 거리 임계값
+        self.frame_count = 0
+        self.unknown_person_consecutive_frames = 0
+        self.unknown_person_frame_threshold = 30
+
+        # 백그라운드 얼굴 인증 스레드
+        self.face_verification_queue = Queue(maxsize=1)  # 프레임 큐 (최대 1개)
+        self.face_verification_result = {"verified": True, "present": True}  # 기본값
+        self.face_verification_lock = threading.Lock()
+        self.face_verification_thread = None
+        self.face_verification_running = False
+
+        # 저장된 벡터 로드
+        self._load_face_embedding()
 
         self.head_tilt_ratio = 0
         self.current_status = "Initializing"
@@ -63,6 +86,198 @@ class AIEngine:
         self.non_study_start_time = None
 
         self.session_start_daily_stats = {}
+        
+        print(f"AI Engine: Face registration status: {self.is_face_registered}")
+        
+        # 얼굴 인증이 등록되어 있으면 백그라운드 스레드 시작
+        if self.is_face_registered:
+            self._start_face_verification_thread()
+    
+    def _load_face_embedding(self):
+        """저장된 얼굴 임베딩 벡터 로드"""
+        if os.path.exists(self.face_embedding_path):
+            try:
+                with open(self.face_embedding_path, 'rb') as f:
+                    self.registered_face_embedding = pickle.load(f)
+                self.is_face_registered = True
+                print(f"AI Engine: Face embedding loaded. Vector shape: {self.registered_face_embedding.shape}")
+            except Exception as e:
+                print(f"Error loading face embedding: {e}")
+                self.registered_face_embedding = None
+                self.is_face_registered = False
+        else:
+            print("AI Engine: No registered face embedding found.")
+            self.is_face_registered = False
+    
+    def _save_face_embedding(self, embedding):
+        """얼굴 임베딩 벡터를 파일로 저장"""
+        try:
+            with open(self.face_embedding_path, 'wb') as f:
+                pickle.dump(embedding, f)
+            print(f"AI Engine: Face embedding saved. Vector shape: {embedding.shape}")
+            return True
+        except Exception as e:
+            print(f"Error saving face embedding: {e}")
+            return False
+    
+    def _start_face_verification_thread(self):
+        """백그라운드 얼굴 인증 스레드 시작"""
+        if self.face_verification_thread is not None and self.face_verification_thread.is_alive():
+            return
+        
+        self.face_verification_running = True
+        self.face_verification_thread = threading.Thread(target=self._face_verification_worker, daemon=True)
+        self.face_verification_thread.start()
+        print("AI Engine: Face verification thread started.")
+    
+    def _stop_face_verification_thread(self):
+        """백그라운드 얼굴 인증 스레드 정지"""
+        self.face_verification_running = False
+        if self.face_verification_thread is not None:
+            self.face_verification_thread.join(timeout=2)
+        print("AI Engine: Face verification thread stopped.")
+    
+    def _face_verification_worker(self):
+        """백그라운드에서 실행되는 얼굴 인증 워커"""
+        while self.face_verification_running:
+            try:
+                # 큐에서 프레임 가져오기 (타임아웃 0.5초)
+                if not self.face_verification_queue.empty():
+                    frame = self.face_verification_queue.get(timeout=0.5)
+                    
+                    # 얼굴 인증 실행
+                    is_verified, is_present = self._verify_registered_user_internal(frame)
+                    
+                    # 결과 저장 (스레드 안전)
+                    with self.face_verification_lock:
+                        self.face_verification_result = {
+                            "verified": is_verified,
+                            "present": is_present
+                        }
+                else:
+                    time.sleep(0.1)
+                    
+            except Exception as e:
+                print(f"Face verification worker error: {e}")
+                time.sleep(0.1)
+        
+    def _verify_registered_user_internal(self, frame):
+        """
+        내부에서 사용하는 얼굴 인증 (스레드에서 실행)
+        Returns:
+            (is_registered_user: bool, is_someone_present: bool)
+        """
+        if not self.is_face_registered or self.registered_face_embedding is None:
+            return True, True
+        
+        try:
+            # 현재 프레임에서 얼굴 임베딩 추출
+            embedding_objs = DeepFace.represent(
+                img_path=frame,
+                model_name="Facenet512",
+                detector_backend='opencv',
+                enforce_detection=False
+            )
+            
+            if not embedding_objs or len(embedding_objs) == 0:
+                # 얼굴이 감지되지 않음
+                return False, False
+            
+            # 현재 얼굴의 임베딩 벡터
+            current_embedding = np.array(embedding_objs[0]["embedding"])
+            
+            # 등록된 벡터와 비교 (코사인 거리)
+            distance = self._cosine_distance(self.registered_face_embedding, current_embedding)
+            
+            print(f"Face verification distance: {distance:.4f} (threshold: {self.face_distance_threshold})")
+            
+            if distance < self.face_distance_threshold:
+                # 등록된 사용자 확인
+                return True, True
+            else:
+                # 다른 사람
+                return False, True
+                    
+        except Exception as e:
+            print(f"Face verification error: {e}")
+            return False, False
+        
+    def register_user_face(self, frame):
+        """
+        사용자 얼굴을 등록 - 벡터(임베딩)로 저장
+        Args:
+            frame: OpenCV BGR 이미지
+        Returns:
+            (success: bool, message: str)
+        """
+        try:
+            # 1. 얼굴 감지
+            faces = DeepFace.extract_faces(
+                img_path=frame,
+                detector_backend='opencv',
+                enforce_detection=True
+            )
+            
+            if len(faces) == 0:
+                return False, "얼굴이 감지되지 않았습니다. 카메라를 정면으로 봐주세요."
+            elif len(faces) > 1:
+                return False, "여러 명의 얼굴이 감지되었습니다. 혼자 있을 때 등록해주세요."
+            
+            # 2. 얼굴 임베딩(벡터) 추출
+            embedding_objs = DeepFace.represent(
+                img_path=frame,
+                model_name="Facenet512",
+                detector_backend='opencv',
+                enforce_detection=True
+            )
+            
+            if not embedding_objs or len(embedding_objs) == 0:
+                return False, "얼굴 특징 추출에 실패했습니다."
+            
+            # 3. 임베딩 벡터 저장 (512차원 numpy array)
+            embedding = np.array(embedding_objs[0]["embedding"])
+            self.registered_face_embedding = embedding
+            
+            # 4. 파일로 저장
+            if self._save_face_embedding(embedding):
+                self.is_face_registered = True
+                
+                # 백그라운드 스레드 시작
+                self._start_face_verification_thread()
+                
+                print("AI Engine: User face registered successfully as embedding vector.")
+                return True, f"얼굴이 성공적으로 등록되었습니다! (벡터 크기: {len(embedding)})"
+            else:
+                return False, "벡터 저장에 실패했습니다."
+            
+        except Exception as e:
+            print(f"Face registration error: {e}")
+            return False, f"얼굴 등록 실패: {str(e)}"
+    
+    def delete_registered_face(self):
+        """등록된 얼굴 삭제"""
+        try:
+            # 백그라운드 스레드 정지
+            self._stop_face_verification_thread()
+            
+            if os.path.exists(self.face_embedding_path):
+                os.remove(self.face_embedding_path)
+            self.registered_face_embedding = None
+            self.is_face_registered = False
+            self.unknown_person_consecutive_frames = 0
+            
+            # 결과 초기화
+            with self.face_verification_lock:
+                self.face_verification_result = {"verified": True, "present": True}
+            
+            print("AI Engine: Face embedding deleted.")
+            return True, "등록된 얼굴이 삭제되었습니다."
+        except Exception as e:
+            return False, f"삭제 실패: {str(e)}"
+    
+    def _cosine_distance(self, vec1, vec2):
+        """두 벡터 간의 코사인 거리 계산"""
+        return 1 - np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
         
     def load_user_stats(self, daily_stats_data: dict):
         if not daily_stats_data:
@@ -113,7 +328,7 @@ class AIEngine:
         self.initial_shoulder = None
         self.is_calibrating = True
         self.calibration_frames = []
-        self.current_non_study_state = None # [추가]
+        self.current_non_study_state = None
         self.non_study_start_time = None
         
 
@@ -161,31 +376,63 @@ class AIEngine:
             return (v1 + v2) / (2.0 * h) if h > 0 else 0.0
         except: return 0.0
 
-    def _analyze_yolo(self, frame):
-        phone_found, person_found = False, False
-        if not self.yolo_model: return
-        results = self.yolo_model(frame, verbose=False)
-        for r in results:
-            for box in r.boxes:
-                cls_id = int(box.cls[0])
-                conf = float(box.conf[0])
-                if cls_id == self.PHONE_CLASS_ID and conf > self.PHONE_CONF_THRESHOLD:
-                    phone_found = True
-                if cls_id == self.PERSON_CLASS_ID and conf > 0.5:
-                    person_found = True
+    def _analyze_yolo_and_face(self, frame):
+        """YOLO 객체 감지 + DeepFace 얼굴 인식 (백그라운드)"""
+        phone_found = False
+        
+        # YOLO로 휴대폰 감지
+        if self.yolo_model:
+            results = self.yolo_model(frame, verbose=False)
+            for r in results:
+                for box in r.boxes:
+                    cls_id = int(box.cls[0])
+                    conf = float(box.conf[0])
+                    if cls_id == self.PHONE_CLASS_ID and conf > self.PHONE_CONF_THRESHOLD:
+                        phone_found = True
+                        break
         
         current_time = time.time()
+        
+        # 휴대폰 감지 시간 체크
         if phone_found:
-            if self.phone_detected_start_time is None: self.phone_detected_start_time = current_time
-            elif current_time - self.phone_detected_start_time > self.PHONE_DETECT_SECONDS: self.is_phone_visible = True
+            if self.phone_detected_start_time is None: 
+                self.phone_detected_start_time = current_time
+            elif current_time - self.phone_detected_start_time > self.PHONE_DETECT_SECONDS: 
+                self.is_phone_visible = True
         else:
-            self.phone_detected_start_time = None; self.is_phone_visible = False
-
-        if not person_found:
-            if self.person_not_detected_start_time is None: self.person_not_detected_start_time = current_time
-            elif current_time - self.person_not_detected_start_time > self.AWAY_DETECT_SECONDS: self.is_person_present = False
+            self.phone_detected_start_time = None
+            self.is_phone_visible = False
+        
+        # 얼굴 인증 - 백그라운드 스레드에 프레임 전달
+        self.frame_count += 1
+        if self.is_face_registered and self.frame_count % self.face_verification_interval == 0:
+            # 큐가 비어있으면 새 프레임 추가 (가득 차있으면 스킵)
+            if self.face_verification_queue.empty():
+                try:
+                    self.face_verification_queue.put_nowait(frame.copy())
+                except:
+                    pass  # 큐가 가득 차면 스킵
+        
+        # 백그라운드 스레드의 최신 결과 가져오기
+        with self.face_verification_lock:
+            is_registered_user = self.face_verification_result["verified"]
+            is_someone_present = self.face_verification_result["present"]
+        
+        if not is_someone_present:
+            if self.person_not_detected_start_time is None: 
+                self.person_not_detected_start_time = current_time
+            elif current_time - self.person_not_detected_start_time > self.AWAY_DETECT_SECONDS: 
+                self.is_person_present = False
         else:
-            self.person_not_detected_start_time = None; self.is_person_present = True
+            if is_registered_user:
+                self.person_not_detected_start_time = None
+                self.is_person_present = True
+                self.unknown_person_consecutive_frames = 0
+            else:
+                # 다른 사람 감지
+                self.unknown_person_consecutive_frames += 1
+                if self.unknown_person_consecutive_frames > self.unknown_person_frame_threshold:
+                    self.is_person_present = False
 
     def _analyze_face_and_head(self, rgb_frame):
         current_time = time.time() 
@@ -357,7 +604,7 @@ class AIEngine:
         frame = cv2.flip(frame, 1)
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         h, w, _ = frame.shape
-        self._analyze_yolo(frame)
+        self._analyze_yolo_and_face(frame)
         self._analyze_face_and_head(rgb_frame)
         pose_results = self.mp_pose.process(rgb_frame)
         

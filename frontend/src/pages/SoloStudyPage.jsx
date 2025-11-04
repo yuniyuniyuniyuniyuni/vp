@@ -32,6 +32,11 @@ function SoloStudyPage() {
   const [todos, setTodos] = useState([]);
   const [newTodoText, setNewTodoText] = useState("");
 
+  // 얼굴 인식 관련 state 추가
+  const [isFaceRegistered, setIsFaceRegistered] = useState(false);
+  const [showFaceModal, setShowFaceModal] = useState(false);
+  const [faceRegisterLoading, setFaceRegisterLoading] = useState(false);
+
   useEffect(() => {
     let ws;
     const connectWebSocket = async () => {
@@ -96,6 +101,70 @@ function SoloStudyPage() {
     fetchUserData();
   }, []); 
 
+  // 얼굴 등록 상태 확인
+  useEffect(() => {
+    checkFaceRegistration();
+  }, []);
+
+  const checkFaceRegistration = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/check-face-registered');
+      const data = await response.json();
+      setIsFaceRegistered(data.registered);
+      
+      // 등록 안 되어 있으면 모달 자동 표시 (선택사항 - 주석 해제하면 자동 팝업)
+      // if (!data.registered) {
+      //   setShowFaceModal(true);
+      // }
+    } catch (error) {
+      console.error('Face registration check failed:', error);
+    }
+  };
+
+  const handleRegisterFace = async () => {
+    setFaceRegisterLoading(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/register-face', {
+        method: 'POST'
+      });
+      const result = await response.json();
+      
+      if (result.success) {
+        alert('✅ ' + result.message);
+        setIsFaceRegistered(true);
+        setShowFaceModal(false);
+      } else {
+        alert('❌ ' + result.message);
+      }
+    } catch (error) {
+      console.error('Face registration failed:', error);
+      alert('얼굴 등록 중 오류가 발생했습니다.');
+    } finally {
+      setFaceRegisterLoading(false);
+    }
+  };
+
+  const handleDeleteFace = async () => {
+    if (!window.confirm('등록된 얼굴을 삭제하시겠습니까?')) return;
+    
+    try {
+      const response = await fetch('http://localhost:8000/api/delete-face', {
+        method: 'DELETE'
+      });
+      const result = await response.json();
+      
+      if (result.success) {
+        alert('✅ ' + result.message);
+        setIsFaceRegistered(false);
+      } else {
+        alert('❌ ' + result.message);
+      }
+    } catch (error) {
+      console.error('Face deletion failed:', error);
+      alert('얼굴 삭제 중 오류가 발생했습니다.');
+    }
+  };
+
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -134,6 +203,28 @@ function SoloStudyPage() {
         <h1 className="header-title">
           AI 실시간 모니터링
         </h1>
+
+        {/* 얼굴 등록 컨트롤 - 헤더 우측에 배치 */}
+        <div className="face-registration-controls">
+          {!isFaceRegistered ? (
+            <button 
+              onClick={() => setShowFaceModal(true)}
+              className="btn-register-face"
+            >
+              👤 얼굴 등록
+            </button>
+          ) : (
+            <div className="face-registered-info">
+              <span>✅ 얼굴 등록됨</span>
+              <button 
+                onClick={handleDeleteFace}
+                className="btn-delete-face"
+              >
+                삭제
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
       <div className="page-body-sidebar">
@@ -244,6 +335,34 @@ function SoloStudyPage() {
           </div>
         </main>
       </div>
+
+      {/* 얼굴 등록 모달 */}
+      {showFaceModal && (
+        <div className="modal-overlay" onClick={() => setShowFaceModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>👤 얼굴 등록</h2>
+            <p>본인 확인을 위해 얼굴을 등록해주세요.</p>
+            <p>카메라를 정면으로 보고 등록 버튼을 눌러주세요.</p>
+            <p className="modal-note">💡 등록 후에는 등록된 사용자만 감지됩니다.</p>
+            
+            <div className="modal-buttons">
+              <button 
+                onClick={handleRegisterFace}
+                disabled={faceRegisterLoading}
+                className="btn-modal-primary"
+              >
+                {faceRegisterLoading ? '등록 중...' : '얼굴 등록'}
+              </button>
+              <button 
+                onClick={() => setShowFaceModal(false)}
+                className="btn-modal-secondary"
+              >
+                나중에
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

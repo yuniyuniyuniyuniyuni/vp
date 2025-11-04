@@ -1,5 +1,3 @@
-# backend/main.py
-
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body, Query
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,10 +6,11 @@ import asyncio
 import time
 from datetime import datetime, timezone, timedelta
 from jose import jwt, JWTError 
-from supabase import create_client, Client # [추가]
+from supabase import create_client, Client
 import os
 from dotenv import load_dotenv
-from ai_monitor import generate_frames, get_current_stats, ai_engine_instance 
+from ai_monitor import generate_frames, get_current_stats, ai_engine_instance
+import cv2
 
 load_dotenv() 
 
@@ -196,6 +195,43 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
                     print(f"Error saving stats to Supabase: {e}")
         else:
             print("Anonymous client disconnected. Stats not saved.")
+
+@app.post("/api/register-face")
+async def register_face():
+    """사용자 얼굴 등록"""
+    if ai_engine_instance is None:
+        raise HTTPException(status_code=503, detail="AI Engine not initialized")
+    
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        raise HTTPException(status_code=500, detail="카메라를 열 수 없습니다.")
+    
+    success, frame = cap.read()
+    cap.release()
+    
+    if not success:
+        raise HTTPException(status_code=500, detail="프레임을 가져올 수 없습니다.")
+    
+    frame = cv2.flip(frame, 1)
+    success, message = ai_engine_instance.register_user_face(frame)
+    
+    return {"success": success, "message": message}
+
+@app.get("/api/check-face-registered")
+async def check_face_registered():
+    """얼굴 등록 여부 확인"""
+    if ai_engine_instance is None:
+        return {"registered": False}
+    return {"registered": ai_engine_instance.is_face_registered}
+
+@app.delete("/api/delete-face")
+async def delete_registered_face():
+    """등록된 얼굴 삭제"""
+    if ai_engine_instance is None:
+        raise HTTPException(status_code=503, detail="AI Engine not initialized")
+    
+    success, message = ai_engine_instance.delete_registered_face()
+    return {"success": success, "message": message}
         
 @app.get("/ranking/top10")
 async def get_top10_ranking():
