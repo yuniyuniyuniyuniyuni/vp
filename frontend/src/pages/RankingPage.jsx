@@ -72,7 +72,7 @@ function RankingPage() {
             <header className="page-header">
                 <div className="container">
                     <Link to="/" className="logo-lg">NO<span className='blue-doze'>DOZE</span></Link>
-                    <Link to="/select" className="btn btn-primary-sm">뒤로가기</Link>
+                    <Link to="/" className="btn btn-primary-sm">뒤로가기</Link>
                 </div>
             </header>
             <main className="select-study-main container">
