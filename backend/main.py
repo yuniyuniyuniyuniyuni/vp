@@ -167,7 +167,8 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
             await websocket.send_json({
                 "time": timer_text,
                 "status": status_text,
-                "stats": stats_data["stats"] 
+                "stats": stats_data["stats"],
+                "total_study_seconds": display_time_sec
             })
             
             await asyncio.sleep(1.0)
