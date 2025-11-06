@@ -1,4 +1,3 @@
-
 print("===== ai_monitor.py 파일 새로 읽음 (버전 21.0 + DB 얼굴 인증) =====")
 import cv2
 import mediapipe as mp
@@ -565,19 +564,8 @@ class AIEngine:
 
     
     def _analyze_face_and_head(self, mesh_results):
-        if not self.is_authenticated_user: 
-            self.face_detected = False
-            self.is_drowsy = False
-            self.is_looking_away = False
-            self.is_looking_down = False
-            self.drowsy_counter = 0
-            self.looking_away_start_time = None
-            self.head_down_counter = 0
-            self.head_up_counter = 0
-            self.head_tilt_ratio = 0.0
-            self.head_turn_ratio = 1.0
-            return
-
+        # [MODIFIED] 1단계: 'return' 가드 삭제. 
+        # is_authenticated_user 여부와 관계없이 항상 자세를 분석합니다.
         
         self.face_detected = False
         self.head_tilt_ratio = 0.0
@@ -694,17 +682,8 @@ class AIEngine:
 
     
     def _analyze_posture(self, pose_results, mesh_results):
-        if not self.is_authenticated_user: 
-            self.pose_detected = False
-            self.is_chin_resting = False
-            self.is_leaning_back = False
-            self.chin_resting_start_time = None
-            self.leaning_back_start_time = None
-            self.delta_face_ratio = 1.0
-            self.delta_nose_y = 0.0
-            self.debug_chin_wrist_dist = float('inf')
-            return
-
+        # [MODIFIED] 1단계: 'return' 가드 삭제. 
+        # is_authenticated_user 여부와 관계없이 항상 자세를 분석합니다.
         
         self.delta_face_ratio = 1.0
         self.delta_nose_y = 0.0
@@ -775,9 +754,10 @@ class AIEngine:
                            self.is_looking_down and 
                            self.delta_nose_y > self.LYING_DOWN_NOSE_GRACE) 
 
+        # [MODIFIED] 2단계: 'Lying Down' Trigger B: Face not detected, but YOLO or Pose is.
+        #            'delta_nose_y' check removed to catch side-lying.
         trigger_B_lying = (not self.face_detected and 
-                           (self.is_person_present or self.pose_detected) and 
-                           self.delta_nose_y > self.LYING_DOWN_NOSE_DOWN_THRESHOLD)
+                           (self.is_person_present or self.pose_detected))
 
         if trigger_A_lying or trigger_B_lying:
             if self.lying_down_start_time is None:
@@ -788,16 +768,23 @@ class AIEngine:
             self.lying_down_start_time = None
             self.is_lying_down = False
             
-        is_truly_away = (not self.is_person_present) and (not self.pose_detected)
         
-        
-        is_unknown_person = (self.is_person_present or self.pose_detected) and (not self.is_authenticated_user)
+        # [MODIFIED] 3단계: 얼굴 인증 결과를 직접 가져와서 상태 정의
+        with self.face_verification_lock:
+            is_face_verified = self.face_verification_result["verified"]
+            is_face_present = self.face_verification_result["present"]
 
+        # [MODIFIED] "낯선 사람" = 얼굴이 감지됐는데(!), 인증이 실패한(!) 경우
+        is_unknown_person_detected = is_face_present and (not is_face_verified)
+        
+        # [MODIFIED] "진짜 자리 이탈" = YOLO, Pose, Face가 모두 감지 X
+        is_truly_away = (not self.is_person_present) and (not self.pose_detected) and (not is_face_present)
+        
         is_drowsy_combined = self.is_drowsy or self.is_chin_resting
         
         self.is_studying = (
             not is_truly_away and 
-            not is_unknown_person and  
+            not is_unknown_person_detected and  # <-- 수정된 변수 사용
             not is_drowsy_combined and 
             not self.is_lying_down and 
             not self.is_leaning_back and
@@ -830,7 +817,8 @@ class AIEngine:
                 new_state = "drowsy"
                 self.current_status = "Drowsy (Chin)" if self.is_chin_resting else "Drowsy (Eyes)"
             
-            elif is_unknown_person: 
+            # [MODIFIED] 3단계: is_unknown_person -> is_unknown_person_detected 로 변경
+            elif is_unknown_person_detected: 
                 new_state = "away" 
                 self.current_status = "Away (Unknown Person)"
             

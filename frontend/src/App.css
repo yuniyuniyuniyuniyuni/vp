@@ -80,37 +80,6 @@ img {
     color: #ffffff;
 }
 
-.todo-form input {
-    padding: 0.35rem 1rem;
-    border: 1px solid #d1d5db;
-    border-radius: 0.2rem;
-    font-size: 1rem;
-    box-sizing: border-box;
-    margin: 0.7rem 1rem 1rem 0;
-    text-align: center;
-}
-
-.todo-form button {
-    background-color: #4285F4;
-    border-radius: 0.375rem;
-    color: #fff;
-    padding: 0.35rem 1rem;
-    font-size: 1rem;
-}
-.todo-item {
-    display: flex;
-    align-items: center;
-    text-align: center;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid #e5e7eb;
-}
-.todo-item button {
-    padding-right: 1rem;
-    display: flex;
-    text-align: center;
-    font-size: 1.25rem;
-}
-
 .homepage-header {
     padding-top: 1rem;
     padding-bottom: 1rem;
@@ -497,6 +466,7 @@ img {
     margin-top: 2rem;
     width: 90%;
     height: 100%;
+    box-sizing: border-box;
 }
 .daily-stats-card .card-title {
     font-size: 1.5rem;
@@ -504,19 +474,13 @@ img {
     color: #111827;
     margin: 0 0 1.5rem 0;
 }
-
-/* [수정] 3열에서 5열로 변경 */
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     gap: 1.5rem;
     text-align: center;
-    margin-top: 2rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid #e5e7eb;
 }
 
-/* [수정] 5열에 맞게 폰트 크기 조정 */
 .stats-grid-item .stat-value {
     font-size: 1.75rem; /* 2.25rem -> 1.75rem */
     font-weight: 800;
@@ -705,39 +669,186 @@ img {
     box-shadow: 0 8px 16px rgba(0, 0, 0, 0.05);
 }
 
-/* [추가] Todo 리스트 관련 스타일 */
+.stats-and-chart-container {
+  display: flex;
+  flex-direction: column; 
+  align-items: center;
+  gap: 2.5rem;
+  width: 100%;
+  margin-top: 1.5rem;
+}
+
+.stats-and-chart-container .stats-grid {
+  width: 100%;
+}
+
+.pie-chart-container {
+  position: relative;
+  height: 500px; 
+  width: 40%;
+  min-width: 300px; 
+  margin-top: 5rem
+}
+
+.pie-chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 200px; /* 최소 높이 */
+  background-color: #f9fafb;
+  border-radius: 0.5rem;
+  border: 1px dashed #e5e7eb;
+  color: #6b7280;
+}
+
 .todo-list-container {
   width: 100%;
-  margin-top: 1rem;
+  height: 100%;
+  margin: 0;
+  padding: 1.5rem;
+  background-color: #f9fafb; 
+  border-radius: 0.75rem; 
+  border: 1px solid #e5e7eb;
 }
+
+.todo-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 1.5rem 0;
+  text-align: center;
+}
+
+.todo-form {
+  margin: 0;
+}
+
+.todo-input-group {
+  display: flex;
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem; /* 그룹 전체에 둥근 모서리 */
+  overflow: hidden; /* 모서리를 이쁘게 감춤 */
+  background-color: #ffffff;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.todo-input-group:focus-within {
+  /* 입력창 포커스 시 테두리 강조 */
+  border-color: #4285F4;
+  box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.2);
+}
+
+.todo-input-group input {
+  flex: 1; /* 입력창이 남는 공간 모두 차지 */
+  border: none;
+  background: none;
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  color: #1f2937;
+  min-width: 0; /* flex-shrink 방지 */
+}
+.todo-input-group input:focus {
+  outline: none; /* 포커스 시 기본 테두리 제거 */
+}
+
+.todo-input-group button {
+  background-color: #4285F4;
+  border: none;
+  border-left: 1px solid #d1d5db; /* 버튼과 입력창 구분선 */
+  color: white;
+  padding: 0 1.25rem;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.todo-input-group button:hover {
+  background-color: #357ae8;
+}
+
+/* 리스트 관련 스타일 */
 .todo-list {
   list-style: none;
   padding: 0;
-  margin: 1rem 0 0 0;
-  max-height: 200px; /* 임시 높이 제한 */
+  margin: 1.5rem 0 0 0;
+  max-height: 700px; /* 높이 제한 및 스크롤 */
   overflow-y: auto;
+  /* 스크롤바 디자인 (선택 사항) */
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db #f9fafb;
 }
-.todo-empty {
-  text-align: center;
-  color: #9ca3af;
-  padding: 1rem;
+
+.todo-list::-webkit-scrollbar {
+  width: 6px;
 }
+.todo-list::-webkit-scrollbar-track {
+  background: #f9fafb;
+  border-radius: 3px;
+}
+.todo-list::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
+  border-radius: 3px;
+}
+
 .todo-item {
   display: flex;
   align-items: center;
-  padding: 0.75rem 0.5rem;
-  border-bottom: 1px solid #e5e7eb;
+  justify-content: space-between; /* 텍스트와 버튼 양끝 정렬 */
+  padding: 0.85rem 1rem;
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  margin-bottom: 0.5rem; /* 아이템 간 간격 */
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  transition: box-shadow 0.2s;
 }
+
+.todo-item:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+}
+
 .todo-item span {
-  flex: 1;
+  flex: 1; /* 텍스트가 공간 차지 */
   text-align: left;
-  margin-left: 0.5rem;
+  margin-right: 1rem;
+  color: #374151;
+  font-size: 0.95rem;
+  /* 텍스트가 너무 길 경우 줄바꿈 처리 */
+  word-break: break-word;
 }
-.todo-check-btn {
+
+/* 삭제 버튼 (기존 check-btn 대체) */
+.todo-delete-btn {
   background: none;
   border: none;
+  color: #9ca3af; /* 평상시 연한 회색 */
+  font-size: 1.25rem;
+  font-weight: 700;
   cursor: pointer;
-  font-size: 1rem;
   padding: 0.25rem;
-  margin-right: 0.5rem;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.todo-delete-btn:hover {
+  color: #ef4444; /* 마우스 올리면 빨간색 */
+}
+
+/* 할 일이 없을 때 스타일 */
+.todo-empty {
+  text-align: center;
+  color: #6b7280;
+  font-size: 0.9rem;
+  padding: 2rem 1rem;
+  background-color: #ffffff;
+  border: 1px dashed #d1d5db;
+  border-radius: 0.375rem;
+}
+
+.todo-empty p {
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem 0;
 }
