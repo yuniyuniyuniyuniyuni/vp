@@ -1,0 +1,21 @@
+# requirements.txt (수정된 최종 버전)
+fastapi
+uvicorn[standard]
+supabase
+python-jose[cryptography]
+python-dotenv
+face_recognition
+
+# === 의존성 충돌 해결 ===
+# mediapipe는 numpy < 2.0 (1.x)을 요구합니다.
+# 하지만 ultralytics와 opencv 최신 버전은 numpy >= 2.0 (2.x)을 요구합니다.
+# 따라서 모든 패키지가 numpy 1.x에서 작동하도록 버전을 고정합니다.
+
+numpy<2.0
+mediapipe==0.10.11
+
+# ultralytics 8.1.x 버전은 numpy 1.x와 호환됩니다.
+ultralytics==8.1.0
+
+# opencv 4.9.x 버전은 numpy 1.x와 호환됩니다.
+opencv-python-headless==4.9.0.80

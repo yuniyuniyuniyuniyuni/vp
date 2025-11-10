@@ -1,4 +1,4 @@
-# backend/main.py
+
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body, Query
 from fastapi.responses import StreamingResponse
@@ -8,15 +8,16 @@ import asyncio
 import time
 from datetime import datetime, timezone, timedelta
 from jose import jwt, JWTError 
-from supabase import create_client, Client # [추가]
+from supabase import create_client, Client 
 import os
 from dotenv import load_dotenv
-from ai_monitor import generate_frames, get_current_stats, ai_engine_instance 
+from ai_monitor import generate_frames, get_current_stats, AIEngine 
+import cv2 
 
 load_dotenv() 
 
-url: str = os.environ.get("SUPABASE_URL")                           # type: ignore
-key: str = os.environ.get("SUPABASE_SERVICE_KEY")                   # type: ignore 
+url: str = os.environ.get("SUPABASE_URL")                       # type: ignore
+key: str = os.environ.get("SUPABASE_SERVICE_KEY")                # type: ignore
 try:
     if url is None or key is None:
         raise ValueError("SUPABASE_URL or SUPABASE_SERVICE_KEY not set in .env")
@@ -24,12 +25,19 @@ try:
     print("Supabase client initialized.")
 except Exception as e:
     print(f"Error initializing Supabase: {e}")  
-    supabase = None                                                 # type: ignore
+    supabase = None                             # type: ignore                      
 
 SUPABASE_JWT_SECRET: str = os.environ.get("SUPABASE_JWT_SECRET")    # type: ignore
 ALGORITHM = "HS256"
 
 app = FastAPI()
+
+
+try:
+    ai_engine_instance = AIEngine(supabase_client=supabase)  # type: ignore
+except Exception as e:
+    print(f"Failed to initialize AIEngine: {e}")
+    ai_engine_instance = None
 
 origins = [
     "http://localhost:5173",
@@ -51,38 +59,46 @@ def read_root():
 @app.get("/video_feed")
 def video_feed():
     return StreamingResponse(
-        generate_frames(), 
+        generate_frames(ai_engine_instance),    # type: ignore
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
 @app.websocket("/ws_stats")
 async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None)):
 
-    user_email = None                                               # type: ignore
-    user_name = "Ananymous"                                           # type: ignore
+    user_email = None                              # type: ignore                 
+    user_name = "Ananymous"                                         
+    
+    if ai_engine_instance is None:
+        await websocket.accept()
+        await websocket.close(code=1011, reason="AI Engine not initialized")
+        return
+        
     if token:
         if supabase is None:
+            await websocket.accept()
             await websocket.close(code=1011, reason="Supabase client not initialized")
             return
         if SUPABASE_JWT_SECRET is None:
             print("ERROR: SUPABASE_JWT_SECRET not set in .env")
+            await websocket.accept()
             await websocket.close(code=1011, reason="JWT secret key not configured")
             return
             
         try:
             payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=[ALGORITHM], options={"verify_aud": False})
-            user_email: str = payload.get("email")                   # type: ignore   
+            user_email: str = payload.get("email")                # type: ignore   
             user_metadata = payload.get("user_metadata", {})
             user_name: str = user_metadata.get("name", user_email.split('@')[0])    
             if user_email is None:
                 raise JWTError("User email not in token payload")
         except JWTError as e:
             print(f"Invalid Supabase token: {e}")
+            await websocket.accept()
             await websocket.close(code=1008, reason="Invalid token")
             return
     
     kst_timezone = timezone(timedelta(hours=9))
-
     now_kst = datetime.now(kst_timezone)
     
     if now_kst.hour < 6:
@@ -93,24 +109,17 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
     study_date_key = logical_date_obj.isoformat()
     await websocket.accept()
 
-    if ai_engine_instance is None:
-        await websocket.close(code=1011, reason="AI Engine not initialized")
-        return
-        
     try:
         if user_email:
             print(f"WebSocket client connected: {user_email}")
-            
             try:
                 supabase.table("user_stats").upsert(
                     {
                         "user_email": user_email, 
                         "user_name": user_name,
-                        "total_study_seconds": 0, 
                         "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
                     },
-                    on_conflict="user_email",
-                    ignore_duplicates=True 
+                    on_conflict="user_email"
                 ).execute()
                 print(f"Ensured user exists in user_stats: {user_email}")
             except Exception as e:
@@ -118,7 +127,7 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
                 await websocket.close(code=1011, reason="Failed to initialize user stats entry")
                 return
             
-            today_date_gmt = time.strftime('%Y-%m-%d', time.gmtime())
+            
             response = supabase.table("daily_user_stats") \
                              .select("*") \
                              .eq("user_email", user_email) \
@@ -127,24 +136,26 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
                              
             if not response.data:
                 print(f"No daily stats found for {user_email} on {study_date_key}. Starting fresh.")
-                ai_engine_instance.load_user_stats({})
+                
+                ai_engine_instance.load_user_stats({}, user_email)  # type: ignore
             else:
-                ai_engine_instance.load_user_stats(response.data[0]) # type: ignore
+                
+                ai_engine_instance.load_user_stats(response.data[0], user_email)    # type: ignore
                 print(f"Daily stats loaded for user: {user_email} on {study_date_key}")
         else:
             print("WebSocket client connected: ANONYMOUS")
-            ai_engine_instance.load_user_stats({})
-            
+            ai_engine_instance.load_user_stats({}, None)    # type: ignore
     except Exception as e:
         print(f"CRITICAL Error loading stats: {e}")
-        ai_engine_instance.load_user_stats({})
+        ai_engine_instance.load_user_stats({}, None)  # type: ignore
+
     try:
         while True:
             if ai_engine_instance is None:
                  await asyncio.sleep(1.0)
                  continue
                  
-            stats_data = get_current_stats()
+            stats_data = get_current_stats(ai_engine_instance) # type: ignore
             display_time_sec = stats_data["total_study_seconds"]
             
             hours = int(display_time_sec // 3600)
@@ -156,7 +167,8 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
             await websocket.send_json({
                 "time": timer_text,
                 "status": status_text,
-                "stats": stats_data["stats"] 
+                "stats": stats_data["stats"],
+                "total_study_seconds": display_time_sec
             })
             
             await asyncio.sleep(1.0)
@@ -196,6 +208,74 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
                     print(f"Error saving stats to Supabase: {e}")
         else:
             print("Anonymous client disconnected. Stats not saved.")
+
+@app.post("/api/register-face")
+async def register_face():
+    if ai_engine_instance is None:
+        raise HTTPException(status_code=503, detail="AI Engine not initialized")
+    
+    
+    if ai_engine_instance.user_email is None:   # type: ignore
+        raise HTTPException(status_code=401, detail="WebSocket이 연결되지 않았거나 로그인되지 않은 사용자입니다.")
+        
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        raise HTTPException(status_code=500, detail="카메라를 열 수 없습니다.")
+    
+    frame_to_register = None
+    print("Attempting to capture a high-quality registration frame...")
+    
+    for i in range(10):
+        success, frame = cap.read()
+        if not success:
+            time.sleep(0.1) 
+            continue
+        
+        flipped_frame = cv2.flip(frame, 1)
+        
+        rgb_frame = cv2.cvtColor(flipped_frame, cv2.COLOR_BGR2RGB)
+    
+        if ai_engine_instance.is_encoding_possible(rgb_frame):    # type: ignore
+            frame_to_register = flipped_frame 
+            print(f"Registration frame captured successfully on attempt {i+1}.")
+            break
+        else:
+            print(f"Attempt {i+1}: Frame is not suitable, trying again...")
+            
+        time.sleep(0.05) 
+        
+    cap.release()
+    
+    if frame_to_register is None:
+        raise HTTPException(status_code=500, detail="얼굴을 감지할 수 없습니다. 더 밝은 곳에서 다시 시도해주세요.")
+
+    success, message = ai_engine_instance.register_user_face(frame_to_register)
+    
+    return {"success": success, "message": message}
+    
+
+@app.get("/api/check-face-registered")
+async def check_face_registered():
+    if ai_engine_instance is None:
+        return {"registered": False}
+        
+    
+    if ai_engine_instance.user_email is None:   # type: ignore
+        return {"registered": False} 
+        
+    return {"registered": ai_engine_instance.is_face_registered}
+
+@app.delete("/api/delete-face")
+async def delete_registered_face():
+    if ai_engine_instance is None:
+        raise HTTPException(status_code=503, detail="AI Engine not initialized")
+
+    if ai_engine_instance.user_email is None:   # type: ignore
+        raise HTTPException(status_code=401, detail="WebSocket이 연결되지 않았거나 로그인되지 않은 사용자입니다.")
+    
+    
+    success, message = ai_engine_instance.delete_registered_face()
+    return {"success": success, "message": message}
         
 @app.get("/ranking/top10")
 async def get_top10_ranking():
