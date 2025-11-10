@@ -1,5 +1,5 @@
 # Debian Bullseye 기반의 Python 3.10 이미지를 사용합니다.
-FROM python:3.11-bullseye
+FROM python:3.10-bullseye
 
 # 컨테이너 내의 작업 디렉터리 설정
 WORKDIR /app
