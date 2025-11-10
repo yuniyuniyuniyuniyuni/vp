@@ -49,15 +49,15 @@ class AIEngine:
         self.AWAY_DETECT_SECONDS = 10.0
         self.HEAD_TILT_RATIO_THRESHOLD = 0.55 
         self.LYING_DOWN_NOSE_DOWN_THRESHOLD = 0.05 
-        self.LYING_DOWN_SECONDS = 3.0 
-        self.HEAD_DOWN_SECONDS = 3.0 
+        self.LYING_DOWN_SECONDS = 10.0
+        self.HEAD_DOWN_SECONDS = 10.0 
         self.LYING_DOWN_NOSE_GRACE = -0.02
-        self.LEANING_BACK_RATIO_THRESHOLD = 0.93
-        self.LEANING_BACK_SECONDS = 3.0
+        self.LEANING_BACK_RATIO_THRESHOLD = 0.75
+        self.LEANING_BACK_SECONDS = 10.0
         self.HEAD_TURN_RATIO_THRESHOLD = 1.8 
-        self.LOOKING_AWAY_SECONDS = 4.0
+        self.LOOKING_AWAY_SECONDS = 10.0
         self.CHIN_WRIST_THRESHOLD = 0.4 
-        self.CHIN_RESTING_SECONDS = 5.0 
+        self.CHIN_RESTING_SECONDS = 10.0
 
         self.LEFT_EYE_INDICES = [362, 385, 387, 263, 373, 380]
         self.RIGHT_EYE_INDICES = [33, 160, 158, 133, 153, 144]
@@ -447,44 +447,6 @@ class AIEngine:
 
         return final_daily_stats, session_delta_stats
 
-    def _log_trigger_event(self, state_name: str, delta_face_ratio: float, head_tilt_ratio: float, delta_nose_y: float):
-        timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
-        log_message = f"[{timestamp}] Event Triggered: {state_name}"
-        print(log_message)
-        print('\a')
-        
-        try:
-            with open("ai_monitor_tuning_log.txt", "a") as f:
-                f.write(f"[{timestamp}] Event: {state_name}\n")
-                if state_name == "Lying Down":
-                    f.write(f"  > Face_Detected:   {self.face_detected}\n")
-                    f.write(f"  > Head_Tilt_Ratio: {head_tilt_ratio:.4f}\n")
-                    f.write(f"  > Delta_Nose_Y:    {delta_nose_y:+.4f} (Threshold: > {self.LYING_DOWN_NOSE_GRACE})\n\n")
-                elif state_name == "Leaning Back":
-                    f.write(f"  > Face_Detected:   {self.face_detected}\n")
-                    f.write(f"  > Delta_Face_Ratio: {delta_face_ratio:.4f} (Threshold: < {self.LEANING_BACK_RATIO_THRESHOLD})\n\n")
-                elif state_name == "Looking Away": 
-                    f.write(f"  > Head_Turn_Ratio: {self.head_turn_ratio:.4f}\n\n")
-                elif state_name == "Drowsy": 
-                    if self.is_chin_resting:
-                        f.write(f"  > Reason: Chin Resting (Dist: {self.debug_chin_wrist_dist:.4f})\n\n")
-                    else:
-                        f.write(f"  > Reason: Eye Closed\n\n")
-                elif state_name == "Away":
-                    with self.face_verification_lock:
-                        is_verified = self.face_verification_result["verified"]
-                        is_present = self.face_verification_result["present"]
-                    if not is_present:
-                        f.write(f"  > Reason: Person not detected (face_recognition)\n\n")
-                    elif not is_verified:
-                        f.write(f"  > Reason: Unknown person detected\n\n")
-                    else:
-                         f.write(f"  > Reason: Person not detected (YOLO)\n\n")
-                else:
-                    f.write("\n")
-        except Exception as e:
-            print(f"Tuning log write error: {e}")
-
     def _euclidean_distance(self, p1, p2):
         if p1 is None or p2 is None:
             return float('inf') 
@@ -840,25 +802,18 @@ class AIEngine:
                 self.current_non_study_state = new_state
                 if new_state != "idle": 
                     self.non_study_start_time = current_time
-
-                    log_args = (self.delta_face_ratio, self.head_tilt_ratio, self.delta_nose_y)
-
+                    
                     if new_state == "drowsy" and not self.drowsy_event_counted: 
                         self.drowsy_count += 1; self.drowsy_event_counted = True
-                        self._log_trigger_event("Drowsy", *log_args) 
                     if new_state == "away" and not self.away_event_counted: 
                         self.away_count += 1; self.away_event_counted = True
-                        self._log_trigger_event("Away", *log_args) 
                     if new_state == "lying_down" and not self.lying_down_event_counted: 
                         self.lying_down_count += 1; self.lying_down_event_counted = True
-                        self._log_trigger_event("Lying Down", *log_args) 
                     if new_state == "leaning_back" and not self.leaning_back_event_counted: 
                         self.leaning_back_count += 1; self.leaning_back_event_counted = True
-                        self._log_trigger_event("Leaning Back", *log_args) 
                     if new_state == "looking_away" and not self.looking_away_event_counted: 
                         self.looking_away_count += 1; self.looking_away_event_counted = True
-                        self._log_trigger_event("Looking Away", *log_args)
-
+                        
         if self.is_studying:
             self.drowsy_event_counted, self.away_event_counted, self.lying_down_event_counted = False, False, False
             self.leaning_back_event_counted = False
