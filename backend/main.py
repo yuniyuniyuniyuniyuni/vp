@@ -1,6 +1,4 @@
-
-
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -11,8 +9,10 @@ from jose import jwt, JWTError
 from supabase import create_client, Client 
 import os
 from dotenv import load_dotenv
-from ai_monitor import generate_frames, get_current_stats, AIEngine 
+from ai_monitor import get_current_stats, AIEngine
 import cv2 
+import numpy as np 
+from contextlib import asynccontextmanager
 
 load_dotenv() 
 
@@ -32,21 +32,43 @@ ALGORITHM = "HS256"
 
 app = FastAPI()
 
+ai_engine_instance: AIEngine | None = None
 
-try:
-    ai_engine_instance = AIEngine(supabase_client=supabase)  # type: ignore
-except Exception as e:
-    print(f"Failed to initialize AIEngine: {e}")
-    ai_engine_instance = None
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    FastAPI 앱의 라이프사이클 관리자 (최신 방식)
+    """
+    # --- 앱 시작 시 실행 ---
+    global ai_engine_instance
+    print("FastAPI lifespan event: Initializing AIEngine (lazily)...")
+    try:
+        ai_engine_instance = AIEngine(supabase_client=supabase)
+        
+        print("FastAPI lifespan event: AIEngine initialized successfully (models will load on first request).")
+    except Exception as e:
+        print(f"CRITICAL: Failed to initialize AIEngine during startup: {e}")
+        ai_engine_instance = None
+    
+    # --- yield: 이 시점에서 FastAPI 앱이 요청을 받기 시작 ---
+    yield
+    
+    if ai_engine_instance:
+        print("FastAPI lifespan event: Shutting down AIEngine...")
+        del ai_engine_instance
+    print("FastAPI lifespan event: Shutdown complete.")
+
+app = FastAPI(lifespan=lifespan)
 
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "https://vp-pi-six.vercel.app"
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=origins, 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -56,13 +78,6 @@ app.add_middleware(
 def read_root():
     return {"Hello": "NODOZE AI Backend"}
 
-@app.get("/video_feed")
-def video_feed():
-    return StreamingResponse(
-        generate_frames(ai_engine_instance),    # type: ignore
-        media_type="multipart/x-mixed-replace; boundary=frame"
-    )
-
 @app.websocket("/ws_stats")
 async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None)):
 
@@ -71,6 +86,7 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
     
     if ai_engine_instance is None:
         await websocket.accept()
+        print("WS: AI Engine not initialized. Closing connection.")
         await websocket.close(code=1011, reason="AI Engine not initialized")
         return
         
@@ -151,9 +167,20 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
 
     try:
         while True:
+            image_bytes = await websocket.receive_bytes()
+            
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+            if frame is None:
+                print("WS: Received empty frame, skipping...")
+                continue
+                
             if ai_engine_instance is None:
-                 await asyncio.sleep(1.0)
+                 print("WS: AI Engine is None, skipping...")
                  continue
+            
+            await asyncio.to_thread(ai_engine_instance.process, frame)
                  
             stats_data = get_current_stats(ai_engine_instance) # type: ignore
             display_time_sec = stats_data["total_study_seconds"]
@@ -170,8 +197,6 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
                 "stats": stats_data["stats"],
                 "total_study_seconds": display_time_sec
             })
-            
-            await asyncio.sleep(1.0)
             
     except WebSocketDisconnect:
         if user_email:
@@ -210,46 +235,27 @@ async def websocket_stats_endpoint(websocket: WebSocket, token: str = Query(None
             print("Anonymous client disconnected. Stats not saved.")
 
 @app.post("/api/register-face")
-async def register_face():
+async def register_face(file: UploadFile = File(...)): 
     if ai_engine_instance is None:
         raise HTTPException(status_code=503, detail="AI Engine not initialized")
-    
     
     if ai_engine_instance.user_email is None:   # type: ignore
         raise HTTPException(status_code=401, detail="WebSocket이 연결되지 않았거나 로그인되지 않은 사용자입니다.")
         
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        raise HTTPException(status_code=500, detail="카메라를 열 수 없습니다.")
-    
-    frame_to_register = None
-    print("Attempting to capture a high-quality registration frame...")
-    
-    for i in range(10):
-        success, frame = cap.read()
-        if not success:
-            time.sleep(0.1) 
-            continue
-        
-        flipped_frame = cv2.flip(frame, 1)
-        
-        rgb_frame = cv2.cvtColor(flipped_frame, cv2.COLOR_BGR2RGB)
-    
-        if ai_engine_instance.is_encoding_possible(rgb_frame):    # type: ignore
-            frame_to_register = flipped_frame 
-            print(f"Registration frame captured successfully on attempt {i+1}.")
-            break
-        else:
-            print(f"Attempt {i+1}: Frame is not suitable, trying again...")
-            
-        time.sleep(0.05) 
-        
-    cap.release()
-    
-    if frame_to_register is None:
-        raise HTTPException(status_code=500, detail="얼굴을 감지할 수 없습니다. 더 밝은 곳에서 다시 시도해주세요.")
+    contents = await file.read()
+    nparr = np.frombuffer(contents, np.uint8)
+    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-    success, message = ai_engine_instance.register_user_face(frame_to_register)
+    if frame is None:
+        raise HTTPException(status_code=400, detail="업로드된 이미지를 읽을 수 없습니다.")
+
+    flipped_frame = cv2.flip(frame, 1)
+    
+    rgb_frame = cv2.cvtColor(flipped_frame, cv2.COLOR_BGR2RGB)
+    if not ai_engine_instance.is_encoding_possible(rgb_frame):    # type: ignore
+        raise HTTPException(status_code=400, detail="얼굴을 감지할 수 없거나 특징 추출에 실패했습니다. 정면을 바라보는 사진을 사용해주세요.")
+
+    success, message = ai_engine_instance.register_user_face(flipped_frame)
     
     return {"success": success, "message": message}
     
@@ -258,7 +264,6 @@ async def register_face():
 async def check_face_registered():
     if ai_engine_instance is None:
         return {"registered": False}
-        
     
     if ai_engine_instance.user_email is None:   # type: ignore
         return {"registered": False} 
