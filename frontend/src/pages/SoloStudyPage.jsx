@@ -1,15 +1,15 @@
-// src/pages/SoloStudyPage.jsx
+// src/pages/SoloStudyPage.jsx (수정된 전체 파일)
 
-import React, { useState, useEffect, useRef } from 'react'; // [수정] useRef 추가
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-
-// Chart.js 임포트
 import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, Title } from 'chart.js';
 
-// Chart.js 모듈 등록
 ChartJS.register(ArcElement, Tooltip, Legend, Title);
+
+const API_URL = "http://localhost:8000";
+const WS_URL = "ws://localhost:8000";
 
 const formatNonStudyTime = (seconds) => {
   if (!seconds) seconds = 0;
@@ -19,8 +19,6 @@ const formatNonStudyTime = (seconds) => {
 };
 
 function SoloStudyPage() {
-  const videoFeedUrl = "http://localhost:8000/video_feed";
-
   const [studyTime, setStudyTime] = useState("00:00:00");
   const [totalStudySecondsNum, setTotalStudySecondsNum] = useState(0); 
   const [currentStatus, setCurrentStatus] = useState("Initializing");
@@ -44,19 +42,70 @@ function SoloStudyPage() {
   const [todos, setTodos] = useState([]);
   const [newTodoText, setNewTodoText] = useState("");
 
-  // [추가] 팝업 및 알림음 상태
   const [showWarning, setShowWarning] = useState(false);
   const [warningMessage, setWarningMessage] = useState("");
   const [isSoundMuted, setIsSoundMuted] = useState(false);
   
-  // [추가] Audio 객체 생성 (public 폴더에 warning.mp3 파일 필요)
   const [warningAudio] = useState(new Audio('/warning.mp3'));
   
-  // [추가] 이전 상태 저장을 위한 Ref
   const prevStatusRef = useRef("Initializing");
 
+  const videoRef = useRef(null); 
+  const wsRef = useRef(null); 
+  const canvasRef = useRef(null); 
+  const isWsOpenRef = useRef(false); 
+
+  const sendFrame = useCallback(() => {
+    if (!isWsOpenRef.current || !videoRef.current || videoRef.current.readyState < 3) {
+      return;
+    }
+    
+    if (!canvasRef.current) {
+      canvasRef.current = document.createElement('canvas');
+      canvasRef.current.width = videoRef.current.videoWidth;
+      canvasRef.current.height = videoRef.current.videoHeight;
+    }
+    
+    const ctx = canvasRef.current.getContext('2d');
+    if (!ctx) return;
+
+    ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+    
+    canvasRef.current.toBlob(
+      (blob) => {
+        if (blob && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(blob);
+        } else if (!isWsOpenRef.current) {
+          console.log("Frame captured but WebSocket is closed. Stopping send loop.");
+        }
+      },
+      'image/jpeg',
+      0.9 
+    );
+  }, []); 
+
+
   useEffect(() => {
-    let ws;
+    let streamCache = null; 
+
+    const startWebcam = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: 640, height: 480 },
+          audio: false 
+        });
+        streamCache = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play(); 
+        }
+      } catch (err) {
+        console.error("Error accessing webcam:", err);
+        alert("카메라 접근에 실패했습니다. 브라우저의 카메라 권한을 확인해주세요.");
+        setCurrentStatus("Camera Error");
+      }
+    };
+
     const connectWebSocket = async () => {
       let token = null;
       let wsStatsUrl;
@@ -64,36 +113,47 @@ function SoloStudyPage() {
 
       if (session) {
         token = session.access_token;
-        wsStatsUrl = `ws://localhost:8000/ws_stats?token=${token}`;
+        wsStatsUrl = `${WS_URL}/ws_stats?token=${token}`; 
         console.log("Connecting WebSocket with Supabase token...");
       } else {
-        wsStatsUrl = `ws://localhost:8000/ws_stats`;
+        wsStatsUrl = `${WS_URL}/ws_stats`; 
         console.log("Connecting WebSocket as anonymous...");
       }
 
-      ws = new WebSocket(wsStatsUrl);
+      const ws = new WebSocket(wsStatsUrl);
+      wsRef.current = ws; 
 
-      ws.onopen = () => console.log("WebSocket connected");
+      ws.onopen = () => {
+        console.log("WebSocket connected");
+        isWsOpenRef.current = true;
+        sendFrame(); 
+      };
+      
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
           if (data.time) setStudyTime(data.time);
-          if (data.status) setCurrentStatus(data.status); // [수정] 이 값에 따라 알림이 트리거됨
+          if (data.status) setCurrentStatus(data.status); 
           if (data.stats) {
             setStats(prevStats => ({ ...prevStats, ...data.stats }));
           }
           if (data.total_study_seconds !== undefined) {
             setTotalStudySecondsNum(data.total_study_seconds);
           }
+          sendFrame();
         } catch (e) { console.error("Failed to parse WebSocket message", e); }
       };
+      
       ws.onerror = (error) => {
         console.error("WebSocket error:", error);
         setCurrentStatus("Error");
       };
+      
       ws.onclose = (event) => {
         console.log("WebSocket disconnected:", event.reason);
-        if (event.code === 1008) { // Invalid token
+        isWsOpenRef.current = false; 
+        
+        if (event.code === 1008) { 
           setCurrentStatus("Auth Error");
           alert("인증이 만료되었습니다. 다시 로그인해주세요.");
           navigate('/');
@@ -103,15 +163,23 @@ function SoloStudyPage() {
       };
     };
 
+    startWebcam();
     connectWebSocket();
+
     return () => {
-      if (ws) {
-        ws.close();
+      isWsOpenRef.current = false; 
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+      if (streamCache) {
+        streamCache.getTracks().forEach(track => track.stop());
+      }
+      if (videoRef.current && videoRef.current.srcObject) {
+        videoRef.current.srcObject = null;
       }
     };
-  }, [navigate]);
+  }, [navigate, sendFrame]); 
 
-  // [추가] '딴짓' 감지 시 팝업 및 소리 알림을 위한 useEffect
   useEffect(() => {
     const nonStudyStates = [
       "Lying Down", 
@@ -125,8 +193,7 @@ function SoloStudyPage() {
 
     const isNonStudy = nonStudyStates.includes(currentStatus);
     
-    // 이전 상태가 '공부 중' 또는 '초기 상태'였는지 확인
-    const wasStudyingOrIdle = !nonStudyStates.includes(prevStatusRef.current);
+    const wasStudyingOrIdle = !nonStudyStates.includes(prevStatusRef.current) && prevStatusRef.current !== "Calibrating" && prevStatusRef.current !== "Initializing";
 
     let message = "";
     if (isNonStudy) {
@@ -135,6 +202,8 @@ function SoloStudyPage() {
           message = "💤 엎드려 있습니다! 허리를 펴주세요.";
           break;
         case "Drowsy (Chin)":
+          message = "😪 턱을 괴고 있습니다! 집중하세요!";
+          break;
         case "Drowsy (Eyes)":
           message = "😴 졸고 있습니다! 정신 차리세요!";
           break;
@@ -183,7 +252,6 @@ function SoloStudyPage() {
     fetchUserData();
   }, []);
 
-  // ... (handleLogout, handleGoBack, handleRegisterFace, handleDeleteFace, checkFaceStatus 함수는 변경 없음) ...
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -200,37 +268,66 @@ function SoloStudyPage() {
 
   const [registrationStatus, setRegistrationStatus] = useState('');
 
-  // 1. 얼굴 등록 API 호출
   const handleRegisterFace = async () => {
-    setRegistrationStatus('등록 중... 카메라를 정면으로 봐주세요.');
-    try {
-      const response = await fetch("http://localhost:8000/api/register-face", {
-        method: "POST",
-      });
-      const data = await response.json();
-
-      if (data.success) {
-        alert("✅ 얼굴 등록 성공!\n\nAI 엔진을 다시 시작하거나 페이지를 새로고침하면 적용됩니다.");
-        setRegistrationStatus('등록됨');
-      } else {
-        alert(`❌ 얼굴 등록 실패:\n\n${data.message}`);
-        setRegistrationStatus(`등록 실패: ${data.message}`);
-      }
-    } catch (err) {
-      console.error("얼굴 등록 API 호출 오류:", err);
-      alert("❌ 서버 연결에 실패했습니다.");
-      setRegistrationStatus('API 호출 오류');
+    if (!videoRef.current || videoRef.current.readyState < 3) {
+      alert("카메라가 준비되지 않았습니다. 잠시 후 다시 시도해주세요.");
+      return;
     }
+    
+    setRegistrationStatus('등록 중... 현재 프레임 캡처 중...');
+    
+    if (!canvasRef.current) {
+        canvasRef.current = document.createElement('canvas');
+        canvasRef.current.width = videoRef.current.videoWidth;
+        canvasRef.current.height = videoRef.current.videoHeight;
+    }
+    const ctx = canvasRef.current.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+    
+    canvasRef.current.toBlob(async (blob) => {
+      if (!blob) {
+        alert("❌ 프레임 캡처에 실패했습니다.");
+        setRegistrationStatus('캡처 실패');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('file', blob, 'face.jpg');
+
+      setRegistrationStatus('서버로 전송 중...');
+      
+      try {
+        const response = await fetch(`${API_URL}/api/register-face`, { 
+          method: "POST",
+          body: formData, 
+        });
+        
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+          alert("✅ 얼굴 등록 성공!");
+          setRegistrationStatus('등록됨');
+        } else {
+          const errorMessage = data.detail || data.message || "알 수 없는 오류";
+          alert(`❌ 얼굴 등록 실패:\n\n${errorMessage}`);
+          setRegistrationStatus(`등록 실패: ${errorMessage}`);
+        }
+      } catch (err) {
+        console.error("얼굴 등록 API 호출 오류:", err);
+        alert("❌ 서버 연결에 실패했습니다.");
+        setRegistrationStatus('API 호출 오류');
+      }
+    }, 'image/jpeg', 0.9); 
   };
 
-  // 2. 얼굴 삭제 API 호출
   const handleDeleteFace = async () => {
     if (!confirm("정말로 등록된 얼굴을 삭제하시겠습니까?")) {
       return;
     }
     setRegistrationStatus('삭제 중...');
     try {
-      const response = await fetch("http://localhost:8000/api/delete-face", {
+      const response = await fetch(`${API_URL}/api/delete-face`, { 
         method: "DELETE",
       });
       const data = await response.json();
@@ -249,20 +346,25 @@ function SoloStudyPage() {
     }
   };
 
-  // 3. 현재 얼굴 등록 상태 확인 (페이지 로드 시)
   useEffect(() => {
     const checkFaceStatus = async () => {
-      try {
-        const response = await fetch("http://localhost:8000/api/check-face-registered");
-        const data = await response.json();
-        setRegistrationStatus(data.registered ? '등록됨' : '등록되지 않음');
-      } catch (err) {
-        setRegistrationStatus('확인 실패');
-      }
+      setTimeout(async () => {
+        if (!isWsOpenRef.current) {
+          console.log("WS not connected. Skipping face status check.");
+          setRegistrationStatus('WS 연결 실패');
+          return;
+        }
+        try {
+          const response = await fetch(`${API_URL}/api/check-face-registered`); 
+          const data = await response.json();
+          setRegistrationStatus(data.registered ? '등록됨' : '등록되지 않음');
+        } catch (err) {
+          setRegistrationStatus('확인 실패');
+        }
+      }, 3000); 
     };
     checkFaceStatus();
-  }, []);
-
+  }, []); 
 
   const handleAddNewTodo = (e) => {
     e.preventDefault();
@@ -277,7 +379,6 @@ function SoloStudyPage() {
     setTodos(prevTodos => prevTodos.filter(todo => todo.id !== idToRemove));
   };
 
-  // ... (파이 차트 데이터 및 옵션은 변경 없음) ...
   const studyLabel = '순수 공부시간';
   const studyColor = '#a7f3d0';
   const studyBorderColor = '#059669';
@@ -302,13 +403,15 @@ function SoloStudyPage() {
     leaning_back_seconds: '#9f1239',
     looking_away_seconds: '#9a3412'
   };
+  
   const totalNonStudyTime =
-    stats.away_seconds +
-    stats.drowsy_seconds +
-    stats.lying_down_seconds +
-    stats.leaning_back_seconds +
-    stats.looking_away_seconds;
-  const totalTrackedTime = totalStudySecondsNum + totalNonStudyTime;
+    (stats.away_seconds || 0) +
+    (stats.drowsy_seconds || 0) +
+    (stats.lying_down_seconds || 0) +
+    (stats.leaning_back_seconds || 0) +
+    (stats.looking_away_seconds || 0);
+  const totalTrackedTime = (totalStudySecondsNum || 0) + totalNonStudyTime;
+  
   const pieChartData = {
     labels: [
       studyLabel, 
@@ -322,12 +425,12 @@ function SoloStudyPage() {
       {
         label: '시간',
         data: [
-          totalStudySecondsNum, 
-          stats.away_seconds,
-          stats.drowsy_seconds,
-          stats.lying_down_seconds,
-          stats.leaning_back_seconds,
-          stats.looking_away_seconds
+          totalStudySecondsNum || 0, 
+          stats.away_seconds || 0,
+          stats.drowsy_seconds || 0,
+          stats.lying_down_seconds || 0,
+          stats.leaning_back_seconds || 0,
+          stats.looking_away_seconds || 0
         ],
         backgroundColor: [
           studyColor, 
@@ -386,7 +489,6 @@ function SoloStudyPage() {
   const statusClassName = `status-${currentStatus.replace(/[\s()]/g, '')}`; 
 
   return (
-    // [추가] 팝업이 떴을 때 뒷 배경을 흐리게 하기 위한 div 추가 (선택 사항)
     <div className={`page-layout-wrapper ${showWarning ? 'blurred' : ''}`}>
       <div className="page-layout-sidebar">
         <header className="solo-header">
@@ -413,7 +515,6 @@ function SoloStudyPage() {
               🏆 랭킹 보러가기
             </Link>
 
-            {/* [추가] 알림음 켜기/끄기 버튼 */}
             <button 
               onClick={() => setIsSoundMuted(prev => !prev)}
               className="btn-sound-toggle"
@@ -424,12 +525,11 @@ function SoloStudyPage() {
             
             {userData && (
               <div className="profile-section">
-                {/* ... (프로필 정보) ... */}
                 <div className="profile-info">
-                  <div className="user-avatar" style={{width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden'}}>
+                  <div className="user-avatar">
                     {userData.picture ? 
-                      <img src={userData.picture} alt="avatar" style={{width: '100%', height: '100%', objectFit: 'cover'}} /> :
-                      <div style={{width: '100%', height: '100%', background: '#eee'}}></div>
+                      <img src={userData.picture} alt="avatar" /> :
+                      <div /> 
                     }
                   </div>
                   <div>
@@ -442,39 +542,36 @@ function SoloStudyPage() {
               </div>
             )}    
             <div className="profile-section">
-              {/* ... (얼굴 인증 섹션) ... */}
-              <div className="profile-info" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
+              <div className="profile-info face-auth">
                 <div style={{ fontSize: '0.9rem', fontWeight: '600' }}>
                   얼굴 인증 (선택)
                 </div>
-                <div style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '0.5rem' }}>
+                <div className="face-auth-status">
                   현재 상태: {registrationStatus}
                 </div>
                 
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div className="face-auth-buttons">
                   <button 
                     onClick={handleRegisterFace} 
-                    className="btn-primary-sm" 
-                    style={{ padding: '0.25rem 0.75rem', fontSize: '0.8rem' }}
-                    disabled={registrationStatus === '등록됨'} 
+                    className="btn btn-primary-sm btn-face-action" 
+                    disabled={!isWsOpenRef.current || registrationStatus === '등록됨'} 
                   >
                     얼굴 등록하기
                   </button>
                   <button 
                     onClick={handleDeleteFace}
-                    className="btn-primary-sm" 
-                    style={{ padding: '0.25rem 0.75rem', fontSize: '0.8rem', backgroundColor: '#dc2626' }} 
-                    disabled={registrationStatus !== '등록됨'} 
+                    className="btn btn-primary-sm btn-face-action btn-delete" 
+                    disabled={!isWsOpenRef.current || registrationStatus !== '등록됨'} 
                   >
                     등록 삭제
                   </button>
                 </div>
-                <p style={{ fontSize: '0.7rem', color: '#9ca3af', margin: '0.5rem 0 0 0' }}>
+                <p className="face-auth-note">
                   * 등록 시, 다른 사람이 화면 앞에 앉으면 '자리 비움'으로 처리됩니다.
                 </p>
               </div>
             </div>              
-            <div className='stats-footer-note' style={{marginTop: 'auto'}}>
+            <div className='stats-footer-note'>
               <button onClick={handleGoBack} className="btn btn-primary">
                 학습 종료
               </button>   
@@ -482,7 +579,6 @@ function SoloStudyPage() {
           </aside>
 
           <main className="solo-main">
-            {/* ... (메인 탭 및 컨텐츠) ... */}
             <div className="tabs main-tabs-container">
               <button
                 className={`tab-btn ${mainActiveTab === 'video' ? 'active' : ''}`}
@@ -503,45 +599,69 @@ function SoloStudyPage() {
                 To-Do List
               </button>
             </div>
-
             <div className="main-tab-content">
-              {mainActiveTab === 'video' ? (
+              <div className={`tab-content-item ${mainActiveTab === 'video' ? '' : 'hidden'}`}>
                 <div className="video-feed">
-                  <img src={videoFeedUrl} alt="AI Monitor Feed" />
+                  <video 
+                    ref={videoRef} 
+                    autoPlay 
+                    muted 
+                    playsInline 
+                    className="video-self-view" 
+                  />
+                  
+                  {(currentStatus === "Initializing" || currentStatus === "Calibrating") && (
+                    <div className="video-overlay">
+                      <p>
+                        {currentStatus === "Initializing" ? "AI 엔진 초기화 중..." : "자세 측정 중..."}
+                      </p>
+                      <p>
+                        AI가 기본 자세를 측정하고 있습니다.<br />
+                        가장 편안하고 바른 자세로 정면을 바라봐주세요.
+                      </p>
+                    </div>
+                  )}
+
+                  {currentStatus === "Camera Error" && (
+                    <div className="video-overlay">
+                      <p>카메라를 시작할 수 없습니다.</p>
+                      <p>브라우저의 카메라 권한을 확인해주세요.</p>
+                    </div>
+                  )}
                 </div>
-              ) : mainActiveTab === 'stats' ? (
+              </div>
+
+              <div className={`tab-content-item ${mainActiveTab === 'stats' ? '' : 'hidden'}`}>
                 <div className="daily-stats-card">
                   <div className="stats-and-chart-container">
-                    {/* ... (통계 그리드) ... */}
                     <div className="stats-grid">
                       <div className="stats-grid-item">
-                        <p className="stat-value">{stats.away} <span>회</span></p>
+                        <p className="stat-value">{(stats.away || 0)} <span>회</span></p>
                         <p className="stat-label-time">{formatNonStudyTime(stats.away_seconds)}</p>
                         <p className="stat-label">자리 비움</p>
                       </div>
                       <div className="stats-grid-item">
-                        <p className="stat-value">{stats.drowsy} <span>회</span></p>
+                        <p className="stat-value">{(stats.drowsy || 0)} <span>회</span></p>
                         <p className="stat-label-time">{formatNonStudyTime(stats.drowsy_seconds)}</p>
                         <p className="stat-label">졸음/턱괴기</p>
                       </div>
                       <div className="stats-grid-item">
-                        <p className="stat-value">{stats.lying_down} <span>회</span></p>
+                        <p className="stat-value">{(stats.lying_down || 0)} <span>회</span></p>
                         <p className="stat-label-time">{formatNonStudyTime(stats.lying_down_seconds)}</p>
                         <p className="stat-label">엎드림</p>
                       </div>
                       <div className="stats-grid-item">
-                        <p className="stat-value">{stats.leaning_back} <span>회</span></p>
+                        <p className="stat-value">{(stats.leaning_back || 0)} <span>회</span></p>
                         <p className="stat-label-time">{formatNonStudyTime(stats.leaning_back_seconds)}</p>
                         <p className="stat-label">뒤로 기댐</p>
                       </div>
                       <div className="stats-grid-item">
-                        <p className="stat-value">{stats.looking_away} <span>회</span></p>
+                        <p className="stat-value">{(stats.looking_away || 0)} <span>회</span></p>
                         <p className="stat-label-time">{formatNonStudyTime(stats.looking_away_seconds)}</p>
                         <p className="stat-label">시선 이탈</p>
                       </div>
                     </div>
-                    {/* ... (파이 차트) ... */}
-                    <div className="pie-chart-container" style={{ height: '400px', maxWidth: '550px' }}>
+                    <div className="pie-chart-container">
                       {totalTrackedTime > 0 ? (
                         <Pie data={pieChartData} options={pieChartOptions} />
                       ) : (
@@ -552,7 +672,8 @@ function SoloStudyPage() {
                     </div>
                   </div>
                 </div>
-              ) : ( 
+              </div>
+              <div className={`tab-content-item ${mainActiveTab === 'todo' ? '' : 'hidden'}`}>
                 <div className="daily-stats-card">
                   <div className="todo-list-container">
                     <h3 className="todo-title">✨ 오늘의 To-Do</h3>
@@ -592,13 +713,12 @@ function SoloStudyPage() {
                     </ul>
                   </div>
                 </div>
-              )}
+              </div>
             </div>
           </main>
         </div>
       </div>
 
-      {/* [추가] '딴짓' 경고 팝업 모달 */}
       {showWarning && (
         <div className="warning-overlay">
           <div className="warning-popup">

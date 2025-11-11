@@ -1,3 +1,4 @@
+/* App.css (수정된 전체 파일) */
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
 
 body {
@@ -34,11 +35,6 @@ img {
     border: none;
 }
 
-.btn-group {
-    display: flex;
-    flex-direction: row;
-}
-
 .btn-primary {
     background-color: #4285F4;
     color: white;
@@ -60,6 +56,13 @@ img {
     background-color: #357ae8;
 }
 
+.btn-logout {
+  background: #4A5568;
+  border-color: #4A5568;
+}
+.btn-logout:hover {
+  background: #394251;
+}
 
 .tab-btn {
     background-color: #e5e7eb;
@@ -105,6 +108,23 @@ img {
 .blue-doze {
   color: #2563eb;
 }
+
+.header-user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.header-user-info img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+}
+.header-user-info span {
+  color: #000;
+  font-size: 16px;
+  font-weight: 500;
+}
+
 .homepage-main {
     text-align: center;
     padding-top: 6rem;
@@ -245,11 +265,20 @@ img {
 }
 
 .user-avatar {
-    width: 2.5rem;
-    height: 2.5rem;
+    width: 40px; 
+    height: 40px;
     background-color: #e5e7eb;
     border-radius: 9999px;
+    overflow: hidden; 
+    flex-shrink: 0; 
 }
+.user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0; 
+}
+
 .user-name {
     font-weight: 600;
     color: #374151;
@@ -323,7 +352,6 @@ img {
 
 .btn-ranking {
     margin-bottom: 1rem;
-    /* .btn 스타일이 적용됨 */
     display: inline-block;
     font-weight: 600;
     border-radius: 0.375rem;
@@ -332,7 +360,6 @@ img {
     cursor: pointer;
     text-align: center;
     border: none;
-    /* .btn-secondary 스타일과 유사하게 만듦 */
     background-color: #e5e7eb;
     color: #374151;
     padding: 0.75rem 1.5rem;
@@ -382,57 +409,26 @@ img {
     display: inline-block;
 }
 .sidebar .stats-footer-note {
-    font-size: 0.75rem;
-    color: #9ca3af;
-    margin-top: auto;
+    margin-top: auto; 
     display: flex;
     justify-content: center;
 }
 
-/* [수정] 백엔드에서 오는 상태 이름(v21.0)에 맞게 CSS 클래스 이름 변경 */
 .status-Studying { background-color: #d1fae5; color: #065f46; }
 .status-DrowsyEyes { background-color: #fef3c7; color: #92400e; }
-.status-DrowsyChin { background-color: #fef3c7; color: #92400e; } /* 턱 괴기도 Drowsy로 처리 */
-.status-Away { background-color: #f3f4f6; color: #374151; }
+.status-DrowsyChin { background-color: #fef3c7; color: #92400e; }
 .status-AwayNotDetected { background-color: #f3f4f6; color: #374151; }
-.status-AwayUnknownPerson { background-color: #fee2e2; color: #991b1b; } /* 다른 사람 감지 */
-.status-LyingDown { background-color: #fee2e2; color: #991b1b; } /* 엎드림 */
-.status-LeaningBack { background-color: #fde68a; color: #92400e; } /* 뒤로 기댐 */
-.status-LookingAway { background-color: #fed7aa; color: #9a3412; } /* 시선 이탈 */
-
+.status-AwayUnknownPerson { background-color: #fee2e2; color: #991b1b; }
+.status-LyingDown { background-color: #fee2e2; color: #991b1b; }
+.status-LeaningBack { background-color: #fde68a; color: #92400e; }
+.status-LookingAway { background-color: #fed7aa; color: #9a3412; }
 .status-Initializing { background-color: #dbeafe; color: #1e40af; }
+.status-Calibrating { background-color: #dbeafe; color: #1e40af; } 
+.status-Idle { background-color: #dbeafe; color: #1e40af; } 
 .status-Disconnected { background-color: #d1d5db; color: #1f2937; }
 .status-Error { background-color: #fecaca; color: #991b1b; }
+.status-CameraError { background-color: #fecaca; color: #991b1b; } 
 .status-AuthError { background-color: #fecaca; color: #991b1b; }
-
-.sidebar nav {
-    margin-top: 2rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-.sidebar nav a {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    text-decoration: none;
-    color: #374151;
-    font-weight: 600;
-    padding: 0.5rem;
-    border-radius: 0.5rem;
-}
-.sidebar nav a.active {
-    background-color: #f3f4f6;
-}
-.sidebar nav a svg {
-    width: 1.25rem;
-    height: 1.25rem;
-    color: #2563eb;
-    flex-shrink: 0;
-}
-.sidebar .btn {
-    margin-top: auto;
-}
 
 .solo-main {
     flex: 1;
@@ -451,13 +447,44 @@ img {
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    position: relative; 
 }
-.video-feed img {
+
+.video-self-view {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    transform: scaleX(-1); 
     border-radius: 0px;
 }
+
+.video-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0,0,0,0.5);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    transition: opacity 0.3s;
+    opacity: 1;
+    z-index: 10;
+}
+.video-overlay p:first-child {
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+.video-overlay p:last-child {
+    font-size: 1rem;
+    margin-top: 0.5rem;
+    line-height: 1.5;
+}
+
 .daily-stats-card {
     background-color: white;
     padding: 2rem;
@@ -476,19 +503,20 @@ img {
 }
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    /* [수정] 5개가 꽉 차도록 5fr로 변경 */
+    grid-template-columns: repeat(5, 1fr); 
     gap: 1.5rem;
     text-align: center;
 }
 
 .stats-grid-item .stat-value {
-    font-size: 1.75rem; /* 2.25rem -> 1.75rem */
+    font-size: 1.75rem; 
     font-weight: 800;
     color: #374151;
     margin: 0;
 }
 .stats-grid-item .stat-value span {
-    font-size: 1rem; /* 1.125rem -> 1rem */
+    font-size: 1rem; 
     font-weight: 600;
     margin-left: 0.25rem;
 }
@@ -507,10 +535,10 @@ img {
 
 
 .main-tabs-container {
-    margin-bottom: 2rem; /* 탭과 콘텐츠 사이의 간격 */
+    margin-bottom: 2rem; 
     width: 90%;
     display: flex;
-    justify-content: left; /* 탭을 중앙에 배치 */
+    justify-content: left; 
 }
 
 .main-tab-content {
@@ -518,8 +546,32 @@ img {
   height: 100%;
   display: flex;
   flex-direction: column;
-  align-items: center; /* 비디오 피드 또는 통계 카드를 중앙 정렬 */
+  align-items: center; 
+  /* [수정] 차트 탭 전환을 위해 relative 추가 */
+  position: relative; 
 }
+
+/* [수정] 탭 컨텐츠 아이템 기본 스타일 */
+.tab-content-item {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* [수정] 탭을 겹치게 함 */
+  position: absolute;
+  top: 0;
+  left: 0;
+  transition: opacity 0.2s ease-in-out, visibility 0.2s;
+}
+
+/* [수정] display:none 대신 투명도와 visibility 사용 */
+.tab-content-item.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none; /* 숨겨진 탭이 클릭되는 것 방지 */
+}
+
 
 .main-tab-content .daily-stats-card {
   margin-top: 0;
@@ -529,13 +581,44 @@ img {
     margin-top: 1.5rem;
     border-top: 1px solid #e4e4e7;
     padding-top: 1.25rem;
-    
 }
 .profile-section .profile-info {
     display: flex;
     align-items: center;
     gap: 0.75rem;
 }
+
+/* [추가] 얼굴 인증 섹션 전용 스타일 */
+.profile-info.face-auth {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.profile-info.face-auth .face-auth-status {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin-bottom: 0.5rem;
+}
+.profile-info.face-auth .face-auth-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+.btn-face-action {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8rem;
+}
+.btn-face-action.btn-delete {
+  background-color: #dc2626;
+}
+.btn-face-action.btn-delete:hover {
+  background-color: #b91c1c;
+}
+.face-auth-note {
+  font-size: 0.7rem;
+  color: #9ca3af;
+  margin: 0.5rem 0 0 0;
+}
+
 
 .ranking-card {
   background-color: #ffffff;
@@ -544,8 +627,8 @@ img {
   padding: 1.5rem 0.5rem;
   max-width: 700px;
   margin: 2rem auto 0;
-  width: 100%; /* 너비 추가 */
-  box-sizing: border-box; /* 패딩 포함 */
+  width: 100%; 
+  box-sizing: border-box; 
 }
 
 
@@ -590,8 +673,8 @@ img {
   font-size: 1.1rem;
   font-weight: 600;
   color: #333;
-  padding-right: 1rem; /* 여백 조정 */
-  flex: 1; /* 이름이 길 경우를 대비 */
+  padding-right: 1rem; 
+  flex: 1; 
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -604,7 +687,7 @@ img {
   font-weight: 600;
   color: #555;
   letter-spacing: 0.5px;
-  padding-left: 1rem; /* 이름과의 최소 간격 */
+  padding-left: 1rem; 
 }
 
 .ranking-item.rank-1,
@@ -640,13 +723,12 @@ img {
   content: '🥉';
 }
 
-/* 랭킹 뱃지 숫자 숨김 (아이콘으로 대체) */
 .rank-badge.rank-1,
 .rank-badge.rank-2,
 .rank-badge.rank-3 {
   text-indent: -9999px;
   line-height: 0;
-  width: 50px; /* 아이콘 공간 확보 */
+  width: 50px; 
   position: relative;
 }
 
@@ -658,15 +740,6 @@ img {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-}
-
-.study-timeline {
-    margin-top: 2rem;
-    width: 90%;
-    height: 80px;
-    background-color: #ffffff;
-    border-radius: 12px;
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.05);
 }
 
 .stats-and-chart-container {
@@ -682,12 +755,14 @@ img {
   width: 100%;
 }
 
+/* [수정] 파이 차트 컨테이너 (가시성 문제 해결) */
 .pie-chart-container {
   position: relative;
-  height: 500px; 
-  width: 40%;
-  min-width: 300px; 
-  margin-top: 5rem
+  height: 400px;
+  width: 100%;
+  max-width: 550px;
+  margin: 0 auto; 
+  margin-top: 7rem;
 }
 
 .pie-chart-empty {
@@ -695,7 +770,7 @@ img {
   align-items: center;
   justify-content: center;
   height: 100%;
-  min-height: 200px; /* 최소 높이 */
+  min-height: 200px; 
   background-color: #f9fafb;
   border-radius: 0.5rem;
   border: 1px dashed #e5e7eb;
@@ -728,36 +803,35 @@ img {
   display: flex;
   width: 100%;
   border: 1px solid #d1d5db;
-  border-radius: 0.5rem; /* 그룹 전체에 둥근 모서리 */
-  overflow: hidden; /* 모서리를 이쁘게 감춤 */
+  border-radius: 0.5rem; 
+  overflow: hidden; 
   background-color: #ffffff;
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   transition: box-shadow 0.2s, border-color 0.2s;
 }
 
 .todo-input-group:focus-within {
-  /* 입력창 포커스 시 테두리 강조 */
   border-color: #4285F4;
   box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.2);
 }
 
 .todo-input-group input {
-  flex: 1; /* 입력창이 남는 공간 모두 차지 */
+  flex: 1; 
   border: none;
   background: none;
   padding: 0.75rem 1rem;
   font-size: 0.9rem;
   color: #1f2937;
-  min-width: 0; /* flex-shrink 방지 */
+  min-width: 0; 
 }
 .todo-input-group input:focus {
-  outline: none; /* 포커스 시 기본 테두리 제거 */
+  outline: none; 
 }
 
 .todo-input-group button {
   background-color: #4285F4;
   border: none;
-  border-left: 1px solid #d1d5db; /* 버튼과 입력창 구분선 */
+  border-left: 1px solid #d1d5db; 
   color: white;
   padding: 0 1.25rem;
   font-size: 1rem;
@@ -769,14 +843,12 @@ img {
   background-color: #357ae8;
 }
 
-/* 리스트 관련 스타일 */
 .todo-list {
   list-style: none;
   padding: 0;
   margin: 1.5rem 0 0 0;
-  max-height: 700px; /* 높이 제한 및 스크롤 */
+  max-height: 700px; 
   overflow-y: auto;
-  /* 스크롤바 디자인 (선택 사항) */
   scrollbar-width: thin;
   scrollbar-color: #d1d5db #f9fafb;
 }
@@ -796,12 +868,12 @@ img {
 .todo-item {
   display: flex;
   align-items: center;
-  justify-content: space-between; /* 텍스트와 버튼 양끝 정렬 */
+  justify-content: space-between; 
   padding: 0.85rem 1rem;
   background-color: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 0.375rem;
-  margin-bottom: 0.5rem; /* 아이템 간 간격 */
+  margin-bottom: 0.5rem; 
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   transition: box-shadow 0.2s;
 }
@@ -811,20 +883,18 @@ img {
 }
 
 .todo-item span {
-  flex: 1; /* 텍스트가 공간 차지 */
+  flex: 1; 
   text-align: left;
   margin-right: 1rem;
   color: #374151;
   font-size: 0.95rem;
-  /* 텍스트가 너무 길 경우 줄바꿈 처리 */
   word-break: break-word;
 }
 
-/* 삭제 버튼 (기존 check-btn 대체) */
 .todo-delete-btn {
   background: none;
   border: none;
-  color: #9ca3af; /* 평상시 연한 회색 */
+  color: #9ca3af; 
   font-size: 1.25rem;
   font-weight: 700;
   cursor: pointer;
@@ -834,10 +904,9 @@ img {
 }
 
 .todo-delete-btn:hover {
-  color: #ef4444; /* 마우스 올리면 빨간색 */
+  color: #ef4444; 
 }
 
-/* 할 일이 없을 때 스타일 */
 .todo-empty {
   text-align: center;
   color: #6b7280;
@@ -876,7 +945,7 @@ img {
   max-width: 450px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
   text-align: center;
-  border-top: 5px solid #ef4444; /* (빨간색 경고) */
+  border-top: 5px solid #ef4444; 
   animation: popup-appear 0.3s ease-out;
 }
 
@@ -894,14 +963,14 @@ img {
 .warning-title {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #be123c; /* (진한 빨강) */
+  color: #be123c; 
   margin-top: 0;
   margin-bottom: 1rem;
 }
 
 .warning-message {
   font-size: 1.1rem;
-  color: #374151; /* (어두운 회색) */
+  color: #374151; 
   margin-bottom: 2rem;
   line-height: 1.6;
 }
@@ -912,7 +981,6 @@ img {
   padding: 0.75rem;
 }
 
-/* --- [추가] 소리 끄기 버튼 --- */
 .btn-sound-toggle {
   display: block;
   width: 100%;
@@ -920,9 +988,9 @@ img {
   font-size: 0.9rem;
   font-weight: 600;
   border-radius: 8px;
-  border: 1px solid #d1d5db; /* (연한 회색 테두리) */
-  background: #f9fafb; /* (매우 연한 회색 배경) */
-  color: #374151; /* (어두운 회색) */
+  border: 1px solid #d1d5db; 
+  background: #f9fafb; 
+  color: #374151; 
   cursor: pointer;
   margin-top: 0.75rem;
   text-align: center;
@@ -930,11 +998,11 @@ img {
 }
 
 .btn-sound-toggle:hover {
-  background: #f3f4f6; /* (호버 시 조금 더 진한 회색) */
+  background: #f3f4f6; 
 }
 
-/* --- [추가] 팝업 시 배경 흐림 효과 (선택 사항) --- */
-.page-layout-wrapper.blurred .page-layout-sidebar {
+.page-layout-wrapper.blurred .page-layout-sidebar,
+.page-layout-wrapper.blurred .solo-main {
   filter: blur(5px);
   transition: filter 0.2s ease-in-out;
 }

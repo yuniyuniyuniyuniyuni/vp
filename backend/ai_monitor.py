@@ -5,6 +5,7 @@ import math
 import time
 from ultralytics import YOLO                    # type: ignore
 import numpy as np
+import threading        # type: ignore      
 import os 
 
 try:
@@ -36,13 +37,15 @@ except ImportError as e:
 class AIEngine:
     def __init__(self, supabase_client=None):
         print("===== AIEngine 클래스 초기화 시작 (버전 21.0 + DB 얼굴 인증) =====")
-        self.mp_face_mesh = mp.solutions.face_mesh.FaceMesh(max_num_faces=1, refine_landmarks=True, min_detection_confidence=0.5, min_tracking_confidence=0.5)   # type: ignore
-        self.mp_pose = mp.solutions.pose.Pose() # type: ignore
-        try:
-            self.yolo_model = YOLO('yolo12n.pt')
-            print("AI Engine: Ultralytics YOLO12n model loaded.")
-        except Exception as e:
-            self.yolo_model = None; print(f"AI Engine Error: Could not load YOLO model: {e}")
+        
+        self.mp_face_mesh = None
+        self.mp_pose = None
+        self.yolo_model = None
+        
+        self._models_loaded = False
+        self._model_load_lock = threading.Lock()
+        
+
 
         self.EAR_THRESHOLD = 0.20
         self.DROWSY_CONSEC_FRAMES = 48
@@ -79,8 +82,10 @@ class AIEngine:
         self.person_not_detected_start_time = None
         self.head_down_counter = 0
         self.head_up_counter = 0
-        self.HEAD_DOWN_CONSEC_FRAMES = int(self.HEAD_DOWN_SECONDS * 24) 
+        
+        self.HEAD_DOWN_CONSEC_FRAMES = int(self.HEAD_DOWN_SECONDS * 10) 
         self.HEAD_UP_GRACE_FRAMES = 10 
+        
         self.lying_down_start_time = None
         self.leaning_back_start_time = None
         self.looking_away_start_time = None 
@@ -135,6 +140,31 @@ class AIEngine:
         else:
             print("AI Engine: Ready for DB-based face authentication.")
         
+    def _load_models_if_needed(self):
+        if self._models_loaded:
+            return
+        
+        with self._model_load_lock:
+            if self._models_loaded:
+                return
+            
+            print("AI Engine: First request. Starting lazy-loading AI models...")
+            try:
+                self.mp_face_mesh = mp.solutions.face_mesh.FaceMesh(               # type: ignore
+                    max_num_faces=1, 
+                    refine_landmarks=True, 
+                    min_detection_confidence=0.5, 
+                    min_tracking_confidence=0.5
+                )
+                self.mp_pose = mp.solutions.pose.Pose()                     # type: ignore
+                
+                self.yolo_model = YOLO('yolo12n.pt')  # type: ignore
+                
+                self._models_loaded = True
+                print("AI Engine: YOLO, FaceMesh, Pose models loaded successfully.")
+            except Exception as e:
+                print(f"CRITICAL: Failed to lazy-load AI models: {e}")
+                self._models_loaded = False
 
     def __del__(self):
         print("AIEngine 소멸자 호출됨. 스레드 정리 시도...")
@@ -526,9 +556,6 @@ class AIEngine:
 
     
     def _analyze_face_and_head(self, mesh_results):
-        # [MODIFIED] 1단계: 'return' 가드 삭제. 
-        # is_authenticated_user 여부와 관계없이 항상 자세를 분석합니다.
-        
         self.face_detected = False
         self.head_tilt_ratio = 0.0
         self.head_turn_ratio = 1.0
@@ -644,8 +671,6 @@ class AIEngine:
 
     
     def _analyze_posture(self, pose_results, mesh_results):
-        # [MODIFIED] 1단계: 'return' 가드 삭제. 
-        # is_authenticated_user 여부와 관계없이 항상 자세를 분석합니다.
         
         self.delta_face_ratio = 1.0
         self.delta_nose_y = 0.0
@@ -716,8 +741,6 @@ class AIEngine:
                            self.is_looking_down and 
                            self.delta_nose_y > self.LYING_DOWN_NOSE_GRACE) 
 
-        # [MODIFIED] 2단계: 'Lying Down' Trigger B: Face not detected, but YOLO or Pose is.
-        #            'delta_nose_y' check removed to catch side-lying.
         trigger_B_lying = (not self.face_detected and 
                            (self.is_person_present or self.pose_detected))
 
@@ -730,23 +753,20 @@ class AIEngine:
             self.lying_down_start_time = None
             self.is_lying_down = False
             
-        
-        # [MODIFIED] 3단계: 얼굴 인증 결과를 직접 가져와서 상태 정의
         with self.face_verification_lock:
             is_face_verified = self.face_verification_result["verified"]
             is_face_present = self.face_verification_result["present"]
 
-        # [MODIFIED] "낯선 사람" = 얼굴이 감지됐는데(!), 인증이 실패한(!) 경우
         is_unknown_person_detected = is_face_present and (not is_face_verified)
         
-        # [MODIFIED] "진짜 자리 이탈" = YOLO, Pose, Face가 모두 감지 X
         is_truly_away = (not self.is_person_present) and (not self.pose_detected) and (not is_face_present)
         
         is_drowsy_combined = self.is_drowsy or self.is_chin_resting
         
         self.is_studying = (
+            not self.is_calibrating and
             not is_truly_away and 
-            not is_unknown_person_detected and  # <-- 수정된 변수 사용
+            not is_unknown_person_detected and
             not is_drowsy_combined and 
             not self.is_lying_down and 
             not self.is_leaning_back and
@@ -769,7 +789,10 @@ class AIEngine:
                 self.study_session_start_time = None
 
             new_state = None
-            if self.is_lying_down:
+            if self.is_calibrating:
+                new_state = "idle"
+                self.current_status = "Calibrating"
+            elif self.is_lying_down:
                 new_state = "lying_down"
                 self.current_status = "Lying Down"
             elif self.is_looking_away: 
@@ -779,7 +802,6 @@ class AIEngine:
                 new_state = "drowsy"
                 self.current_status = "Drowsy (Chin)" if self.is_chin_resting else "Drowsy (Eyes)"
             
-            # [MODIFIED] 3단계: is_unknown_person -> is_unknown_person_detected 로 변경
             elif is_unknown_person_detected: 
                 new_state = "away" 
                 self.current_status = "Away (Unknown Person)"
@@ -793,7 +815,7 @@ class AIEngine:
                 self.current_status = "Leaning Back"
             else:
                 new_state = "idle" 
-                self.current_status = "Calibrating" if self.is_calibrating else "Idle"
+                self.current_status = "Idle" 
 
             if new_state != self.current_non_study_state:
                 if self.current_non_study_state is not None:
@@ -840,101 +862,36 @@ class AIEngine:
         self.current_non_study_state = None
     
     def _draw_overlay(self, frame):
-        h, w, _ = frame.shape
-        display_time_sec = self.current_daily_study_time
-        if self.is_timer_running and self.study_session_start_time:
-            display_time_sec += (time.time() - self.study_session_start_time)
-        hours, rem = divmod(display_time_sec, 3600)
-        minutes, seconds = divmod(rem, 60)
-        timer_text = f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
-        
-        status_color = (0, 255, 0) if self.is_studying else (0, 0, 255)
-        cv2.putText(frame, f"Status: {self.current_status}", (10, h - 40), cv2.FONT_HERSHEY_SIMPLEX, 1, status_color, 2)
-        cv2.putText(frame, f"Study Time: {timer_text}", (10, h - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, status_color, 2)
-
-        debug_y_start = 90 
-        
-        cv2.putText(frame, f"Delta Ratio (Face): {self.delta_face_ratio:.2f}", 
-                    (w - 450, debug_y_start + 0), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-        
-        cv2.putText(frame, f"Delta Y (Nose):     {self.delta_nose_y:+.2f}", 
-                    (w - 450, debug_y_start + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-        
-        face_text = f"Face Detected: {'YES' if self.face_detected else 'NO'}"
-        face_color = (0, 255, 0) if self.face_detected else (0, 0, 255)
-        cv2.putText(frame, face_text, (w - 450, debug_y_start + 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, face_color, 2)
-        
-        pose_text = f"Pose Detected: {'YES' if self.pose_detected else 'NO'}"
-        pose_color = (0, 255, 0) if self.pose_detected else (0, 0, 255)
-        cv2.putText(frame, pose_text, (w - 450, debug_y_start + 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, pose_color, 2)
-
-        chin_dist_text = f"Chin-Wrist Dist: {self.debug_chin_wrist_dist:.2f}"
-        cv2.putText(frame, chin_dist_text, (w - 450, debug_y_start + 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-
-        cv2.putText(frame, f"Head Turn Ratio: {self.head_turn_ratio:.2f}", (w - 450, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-        
-        
-        auth_text = "Face Auth: N/A"
-        auth_color = (255, 255, 0) 
-        if FACE_RECOGNITION_ENABLED and self.supabase:
-            if not self.user_email:
-                auth_text = "Face Auth: Anonymous"
-                auth_color = (0, 165, 255) 
-            elif not self.is_face_registered:
-                auth_text = "Face Auth: Not Registered"
-                auth_color = (0, 165, 255) 
-            else:
-                
-                if not self.is_authenticated_user:
-                    auth_text = "Face Auth: UNKNOWN"
-                    auth_color = (0, 0, 255) 
-                else:
-                    auth_text = "Face Auth: VERIFIED"
-                    auth_color = (0, 255, 0) 
-        cv2.putText(frame, auth_text, (w - 450, debug_y_start + 150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, auth_color, 2)
-
-
-        statuses = {
-            "Drowsy (Eyes)": self.is_drowsy, 
-            "Drowsy (Chin)": self.is_chin_resting, 
-            "Lying Down": self.is_lying_down, 
-            "Leaning Back": self.is_leaning_back, 
-            "Looking Away": self.is_looking_away, 
-            "Away": (not self.is_person_present and not self.pose_detected)
-        }
-        y_pos = 30
-        for name, is_active in statuses.items():
-            text = f"{name}: {'YES' if is_active else 'NO'}"
-            color = (0, 0, 255) if is_active else (0, 255, 0)
-            cv2.putText(frame, text, (10, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-            y_pos += 30
+        pass
 
     def process(self, frame):
+        self._load_models_if_needed()
+        
+        if not self._models_loaded or self.yolo_model is None or self.mp_face_mesh is None:
+            print("AI Engine: Models not ready, skipping frame.")
+            # 상태가 "Initializing" 등으로 유지되도록 해야 할 수 있습니다.
+            self.current_status = "Initializing Models"
+            return
+        
         frame = cv2.flip(frame, 1)
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         h, w, _ = frame.shape
-
         
         self._analyze_yolo_and_face(frame, rgb_frame) 
         
         mesh_results = self.mp_face_mesh.process(rgb_frame)
-        pose_results = self.mp_pose.process(rgb_frame)
+        pose_results = self.mp_pose.process(rgb_frame)                     # type: ignore
         
         self._analyze_face_and_head(mesh_results)
         
         if self.is_calibrating:
             self.calibrating_text = "Calibrating... Please Sit Naturally"
-            text_size = cv2.getTextSize(self.calibrating_text, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)[0]
-            text_x = (w - text_size[0]) // 2
-            text_y = (h + text_size[1]) // 2
-            cv2.putText(frame, self.calibrating_text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
             self._calibrate_posture(pose_results, mesh_results)
         else:
             self._analyze_posture(pose_results, mesh_results)
-            self._update_status_and_timers()
-            self._draw_overlay(frame)
-        return frame
-
+        
+        self._update_status_and_timers()
+        
     def get_state_for_main_py(self):
         display_time_sec = self.current_daily_study_time
         if self.is_timer_running and self.study_session_start_time:
@@ -973,57 +930,3 @@ def get_current_stats(ai_engine_instance):
             "current_status": "Error: Engine Failed",
             "counts": {"drowsy": 0, "away": 0, "lying_down": 0, "leaning_back": 0, "looking_away": 0} 
         }
-
-
-def generate_frames(ai_engine_instance):
-    
-    if ai_engine_instance is None or ai_engine_instance.yolo_model is None:
-        print("Error: AI Engine or YOLO model not loaded. Exiting frame generation.")
-        error_frame = np.zeros((480, 640, 3), dtype=np.uint8)
-        error_text = "Error: Model Load Failed"
-        text_size = cv2.getTextSize(error_text, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)[0]
-        text_x = (640 - text_size[0]) // 2
-        text_y = (480 + text_size[1]) // 2
-        cv2.putText(error_frame, error_text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-        (flag, encodedImage) = cv2.imencode(".jpg", error_frame)
-        if flag:
-            yield(b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + 
-                  bytearray(encodedImage) + b'\r\n')
-        return
-        
-    cap = cv2.VideoCapture(0)
-
-    if not cap.isOpened():
-        print("Error: Could not open video stream.")
-        return
-
-    try:
-        while cap.isOpened():
-            success, frame = cap.read()
-            if not success:
-                print("Warning: Failed to read frame from camera.")
-                
-                time.sleep(0.5) 
-                continue
-            
-            
-            if ai_engine_instance is None:
-                print("Error: AI Engine instance disappeared.")
-                break
-                
-            processed_frame = ai_engine_instance.process(frame) 
-
-            (flag, encodedImage) = cv2.imencode(".jpg", processed_frame)
-            if not flag:
-                continue
-
-            yield(b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + 
-                  bytearray(encodedImage) + b'\r\n')
-            
-    except Exception as e:
-        print(f"An error occurred during frame generation: {e}")
-    finally:
-        print("Releasing video capture")
-        cap.release()
-        if ai_engine_instance:
-            pass
