@@ -50,7 +50,7 @@ class AIEngine:
 
         self.EAR_THRESHOLD = 0.20
         self.DROWSY_CONSEC_FRAMES = 48
-        self.AWAY_DETECT_SECONDS = 10.0
+        self.AWAY_DETECT_SECONDS = 8.0
         self.HEAD_TILT_RATIO_THRESHOLD = 0.55 
         self.LYING_DOWN_NOSE_DOWN_THRESHOLD = 0.05 
         self.LYING_DOWN_SECONDS = 10.0
@@ -126,7 +126,7 @@ class AIEngine:
         self.face_distance_threshold = 0.55
         self.frame_count = 0
         self.unknown_person_consecutive_frames = 0
-        self.unknown_person_frame_threshold = 30
+        self.unknown_person_frame_threshold = 50
         self.face_verification_queue = Queue(maxsize=1)
         self.face_verification_result = {"verified": True, "present": True}
         self.face_verification_lock = threading.Lock()
