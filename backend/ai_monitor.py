@@ -6,6 +6,7 @@ import time
 from ultralytics import YOLO                    # type: ignore
 import numpy as np
 import threading        # type: ignore      
+import base64
 import os 
 
 try:
@@ -181,9 +182,11 @@ class AIEngine:
             
             if response.data and response.data[0].get('face_encoding'):
                 
-                encoding_list = response.data[0]['face_encoding']
+                encoding_base64_str = response.data[0]['face_encoding']
+                encoding_bytes = base64.b64decode(encoding_base64_str)
+                encoding_array = np.frombuffer(encoding_bytes, dtype=np.float64)
                 
-                self.registered_face_encoding = np.array(encoding_list)
+                self.registered_face_encoding = np.array(encoding_array)
                 self.is_face_registered = True
                 print(f"AI Engine: Face encoding loaded from DB for {self.user_email}.")
             else:
@@ -246,32 +249,34 @@ class AIEngine:
             return True, True 
         
         try:
-            
             face_locations = face_recognition.face_locations(rgb_frame)
             if not face_locations:
-                return False, False 
-            
-            
-            current_face_encodings = face_recognition.face_encodings(rgb_frame, [face_locations[0]])
-            if not current_face_encodings:
-                return False, False 
-            
-            current_encoding = current_face_encodings[0]
+                return False, False # (Verified=False, Present=False) - 얼굴 없음
 
+            current_face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+            if not current_face_encodings:
+                return False, False # (Verified=False, Present=False) - 인코딩 실패
             
-            matches = face_recognition.compare_faces(
-                [self.registered_face_encoding], 
-                current_encoding, 
-                tolerance=self.face_distance_threshold
-            )
-            
-            is_verified = matches[0]
-            
-            return is_verified, True 
-                    
+            if len(current_face_encodings) == 0:
+                return False, False # (Verified=False, Present=False) - 얼굴 없음
+
+            found_unknown_face = False
+            for current_encoding in current_face_encodings:
+                # 등록된 얼굴과 현재 얼굴 비교
+                matches = face_recognition.compare_faces(
+                    [self.registered_face_encoding], 
+                    current_encoding, 
+                    tolerance=self.face_distance_threshold
+                )
+                if not matches[0]:
+                    found_unknown_face = True
+                    break 
+        
+            return not found_unknown_face, True 
+
         except Exception as e:
-            
-            return False, False 
+            print(f"Face verification internal error: {e}")
+            return False, False
     
     def is_encoding_possible(self, rgb_frame):
         if not FACE_RECOGNITION_ENABLED:
@@ -312,11 +317,12 @@ class AIEngine:
             
             encoding_array = current_face_encodings[0]
             
-            encoding_list = encoding_array.tolist()
+            encoding_bytes = encoding_array.tobytes()
+            encoding_base64_str = base64.b64encode(encoding_bytes).decode('utf-8')
             
             
             response = self.supabase.table("user_stats") \
-                           .update({"face_encoding": encoding_list}) \
+                           .update({"face_encoding": encoding_base64_str}) \
                            .eq("user_email", self.user_email) \
                            .execute()
             
@@ -792,6 +798,15 @@ class AIEngine:
             if self.is_calibrating:
                 new_state = "idle"
                 self.current_status = "Calibrating"
+                
+            elif is_unknown_person_detected: 
+                new_state = "away" 
+                self.current_status = "Away (Unknown Person)"
+            
+            elif is_truly_away:
+                new_state = "away"
+                self.current_status = "Away (Not Detected)"
+                
             elif self.is_lying_down:
                 new_state = "lying_down"
                 self.current_status = "Lying Down"
