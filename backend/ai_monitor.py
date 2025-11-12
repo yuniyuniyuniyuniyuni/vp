@@ -46,8 +46,6 @@ class AIEngine:
         self._models_loaded = False
         self._model_load_lock = threading.Lock()
         
-
-
         self.EAR_THRESHOLD = 0.20
         self.DROWSY_CONSEC_FRAMES = 48
         self.AWAY_DETECT_SECONDS = 8.0
@@ -748,7 +746,10 @@ class AIEngine:
                            self.delta_nose_y > self.LYING_DOWN_NOSE_GRACE) 
 
         trigger_B_lying = (not self.face_detected and 
-                           (self.is_person_present or self.pose_detected))
+                           not self.is_looking_away and 
+                           self.pose_detected and
+                           self.is_person_present
+                           )
 
         if trigger_A_lying or trigger_B_lying:
             if self.lying_down_start_time is None:
@@ -802,7 +803,6 @@ class AIEngine:
             elif is_unknown_person_detected: 
                 new_state = "away" 
                 self.current_status = "Away (Unknown Person)"
-            
             elif is_truly_away:
                 new_state = "away"
                 self.current_status = "Away (Not Detected)"
