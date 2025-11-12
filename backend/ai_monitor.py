@@ -766,7 +766,11 @@ class AIEngine:
 
         is_unknown_person_detected = is_face_present and (not is_face_verified)
         
-        is_truly_away = (not self.is_person_present) and (not self.pose_detected) and (not is_face_present)
+        is_yolo_away = (not self.is_person_present) 
+    
+        is_immediate_away = (not is_face_present) and (not self.face_detected) and (not self.pose_detected)
+
+        is_truly_away = is_yolo_away or is_immediate_away
         
         is_drowsy_combined = self.is_drowsy or self.is_chin_resting
         
